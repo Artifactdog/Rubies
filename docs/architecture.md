@@ -2,7 +2,7 @@
 
 ## Current shape
 
-Rubies v0.2 is a static React PWA served by Nginx. It deliberately keeps the first useful release portable: no external cloud account, database, or runtime service is required.
+Rubies 2026.08.06.0 is a static React PWA served by Nginx. It deliberately keeps the first useful release portable: no external cloud account, database, or runtime service is required.
 
 ### Layers
 

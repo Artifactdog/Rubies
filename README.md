@@ -4,16 +4,21 @@ Rubies is a self-hosted, local-first budget management PWA inspired by zero-base
 
 > Rubies is an independent project. It is not affiliated with or endorsed by YNAB or Obsidian.
 
-## What works in v0.2
+## What works in 2026.08.06.0
 
 ### Budgeting
 
 - Monthly zero-based assignments with category balance rollover
 - Editable category names, groups, notes, and targets
-- Three target types:
-  - Refill a category balance to an amount each month
-  - Assign a fixed amount every month
-  - Save a total amount by a target month
+- Three target behaviors:
+  - Refill a category balance on its schedule
+  - Assign a fixed amount on its schedule
+  - Save a total amount by a deadline
+- Weekly, monthly, yearly, and every-N-period schedules
+- Exact first due dates, including weekday/day-of-month alignment
+- Repeating deadline goals every N months or years
+- Custom irregular occurrence dates and custom future deadlines
+- Monthly target calculations automatically count every scheduled occurrence
 - One-click target funding and target auto-assignment
 - Move money between categories or back to Ready to Assign
 - Direct assignment editing with immediate budget recalculation
@@ -78,6 +83,7 @@ For PWA installation outside localhost, serve Rubies through HTTPS. A reverse pr
 ```bash
 npm install
 npm run typecheck
+npm test
 npm run build
 docker build -t rubies-budget .
 ```
@@ -88,14 +94,18 @@ The encrypted vault is stored in browser `localStorage` on the current device an
 
 Clearing browser site data deletes the local vault. Changing browsers or devices does not transfer it automatically.
 
+## Versioning
+
+Rubies releases use `YYYY.MM.DD.N`. The first release made on a date uses iteration `0`; later releases that same date increment it.
+
 ## Roadmap
 
-1. **Current v0.2 — useful local budgeting**
-   - Protected local vault, categories, targets, money movement, accounts, editable transactions, demo mode
+1. **Current 2026.08.06.0 — useful local budgeting**
+   - Protected local vault, editable categories, full target scheduling, money movement, accounts, editable transactions, demo mode
 2. **Durable local data**
    - IndexedDB repository, migrations, undo history, scheduled transactions, reconciliation, split transactions
 3. **Full nYNAB-style behavior**
-   - Credit-card payment categories, cash overspending treatment, target recurrence options, payee rules, CSV import, bulk editing
+   - Credit-card payment categories, cash overspending treatment, payee rules, CSV import, bulk editing
 4. **Optional self-hosted sync and authentication**
    - API service, PostgreSQL, server sessions, multi-device encrypted replication, conflict handling
 5. **Reflection and collaboration**
