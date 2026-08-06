@@ -1,12 +1,13 @@
 {
   "name": "rubies-budget",
   "private": true,
-  "version": "0.2.0",
+  "version": "2026.08.06.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --pretty false",
+    "test": "node --experimental-strip-types --test tests/domain.test.mjs",
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
