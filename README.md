@@ -4,7 +4,7 @@ Rubies is a self-hosted, local-first envelope budgeting PWA with a calm, informa
 
 > Rubies is an independent project. It is not affiliated with or endorsed by YNAB or Obsidian.
 
-## What works in 2026.08.06.1
+## What works in 2026.8.6.2
 
 ### Budgeting
 
@@ -26,7 +26,10 @@ Rubies is a self-hosted, local-first envelope budgeting PWA with a calm, informa
 - Future-month recommendations recalculate as the deadline approaches
 - One-click target funding and target auto-assignment
 - Move money between categories or back to Ready to Assign
-- Large mouse-friendly allocation sliders plus exact keyboard entry
+- Dense desktop rows that keep category, target, assigned, activity, and available values visible together
+- Confirmed assignment editor with exact entry, a linear mouse/touch slider, Enter-to-save, and cancel-to-discard
+- Undo and redo from buttons or `Ctrl/⌘ Z` and `Ctrl/⌘ Shift Z`
+- Persistent allocation history for assignments, moves, and auto-assign actions
 - Editable and collapsible category groups
 - Category archiving without destroying transaction history
 - A **Today** button and `T` keyboard shortcut to return to the current month
@@ -44,6 +47,7 @@ The importer preserves:
 - transactions, memos, payee names, categories, income, and transfers
 - monthly, every-N-month, annual, and one-time deadline targets
 - goal target amounts, due days, target months, and snoozed months
+- month-level assignment snapshots for allocation history
 - split transactions by flattening their subtransactions into normal Rubies entries
 
 nYNAB milliunits are converted to Rubies minor currency units. Internal Ready to Assign, Uncategorized, and credit-card payment categories are excluded. Scheduled transactions are reported as an import warning because Rubies does not schedule transactions yet.
@@ -61,7 +65,7 @@ Rubies deliberately uses one account model:
 - add, edit, and delete income or expense transactions
 - account filtering and live balances
 
-Existing Rubies version-2 budgets migrate automatically to this simpler model when unlocked or imported.
+Existing Rubies budgets migrate automatically to the current model when unlocked or imported.
 
 ### Access and data protection
 
@@ -79,7 +83,7 @@ Existing Rubies version-2 budgets migrate automatically to this simpler model wh
 - Installable PWA with offline app-shell caching
 - Docker and Docker Compose deployment
 - CSP and browser hardening headers in the bundled Nginx configuration
-- Keyboard shortcuts: `P` Plan, `A` Accounts, `N` New transaction, `M` Move money, `T` Today
+- Visible keyboard shortcuts: `P` Plan, `A` Accounts, `N` New transaction, `M` Move money, `T` Today, `Ctrl/⌘ Z` Undo, and `?` Help
 
 ## Security model
 
@@ -126,14 +130,14 @@ Clearing browser site data deletes the local vault. Changing browsers or devices
 
 ## Versioning
 
-Rubies releases use `YYYY.MM.DD.N`. The first release made on a date uses iteration `0`; later releases that same date increment it.
+Rubies releases use `YYYY.M.D.N` without zero-padding the month or day. The first release made on a date uses iteration `0`; later releases that same date increment it.
 
 ## Roadmap
 
-1. **Current 2026.08.06.1 — practical local budgeting**
+1. **Current 2026.8.6.2 — practical local budgeting**
    - Protected vault, nYNAB import, month-aware targets, simple accounts, editable transactions, money movement, and demo mode
 2. **Durable local data**
-   - IndexedDB repository, migrations, undo history, and safer large-budget persistence
+   - IndexedDB repository and safer large-budget persistence
 3. **Transaction workflow**
    - Scheduled transactions, native split editing, payee rules, CSV import, and bulk editing
 4. **Optional self-hosted sync and authentication**

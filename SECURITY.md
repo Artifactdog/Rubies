@@ -2,7 +2,7 @@
 
 ## Current security boundary
 
-Rubies 2026.08.06.1 encrypts the local budget payload with AES-256-GCM. The key is derived from the user's password with PBKDF2-SHA-256, a random salt, and 310,000 iterations. A fresh IV and salt are generated for each persisted payload.
+Rubies 2026.8.6.2 encrypts the local budget payload with AES-256-GCM. The key is derived from the user's password with PBKDF2-SHA-256, a random salt, and 310,000 iterations. A fresh IV and salt are generated for each persisted payload.
 
 The password is not stored. There is no recovery mechanism.
 

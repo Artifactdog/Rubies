@@ -12,7 +12,7 @@ import {
 } from '../src/domain.ts'
 
 const baseState = {
-  version: 3,
+  version: 4,
   name: 'Test',
   currency: 'USD',
   activeMonth: '2026-08',
@@ -20,6 +20,7 @@ const baseState = {
   accounts: [],
   transactions: [],
   months: { '2026-08': { month: '2026-08', assignments: {} } },
+  allocationEvents: [],
 }
 
 test('weekly schedules count every occurrence in the budget month', () => {
@@ -157,6 +158,28 @@ test('cash overspending resets the category and reduces next month Ready to Assi
   assert.equal(getReadyToAssign(state, '2026-05'), -2000)
 })
 
+test('later assignments consume Ready to Assign left in earlier months', () => {
+  const category = { id: 'general', groupId: 'g', name: 'General' }
+  const state = {
+    ...baseState,
+    categories: [category],
+    accounts: [{ id: 'a', name: 'Cash' }],
+    transactions: [
+      { id: 'may-income', accountId: 'a', date: '2026-05-01', payee: 'Income', memo: '', categoryId: null, amount: 10000 },
+      { id: 'jun-income', accountId: 'a', date: '2026-06-01', payee: 'Income', memo: '', categoryId: null, amount: 10000 },
+      { id: 'jul-income', accountId: 'a', date: '2026-07-01', payee: 'Income', memo: '', categoryId: null, amount: 10000 },
+    ],
+    months: {
+      '2026-05': { month: '2026-05', assignments: { general: 6000 } },
+      '2026-06': { month: '2026-06', assignments: { general: 6000 } },
+      '2026-07': { month: '2026-07', assignments: { general: 18000 } },
+    },
+  }
+  assert.equal(getReadyToAssign(state, '2026-05'), 0)
+  assert.equal(getReadyToAssign(state, '2026-06'), 0)
+  assert.equal(getReadyToAssign(state, '2026-07'), 0)
+})
+
 test('version 2 budgets migrate to one account model without cleared state', () => {
   const migrated = normalizeBudgetState({
     version: 2,
@@ -178,7 +201,8 @@ test('version 2 budgets migrate to one account model without cleared state', () 
     }],
     months: { '2026-08': { month: '2026-08', assignments: {} } },
   })
-  assert.equal(migrated.version, 3)
+  assert.equal(migrated.version, 4)
+  assert.deepEqual(migrated.allocationEvents, [])
   assert.deepEqual(migrated.accounts[0], { id: 'a', name: 'Card' })
   assert.equal('cleared' in migrated.transactions[0], false)
 })
@@ -238,6 +262,8 @@ test('nYNAB imports convert milliunits, assignments, goals, snoozing, and balanc
   assert.equal(result.state.months['2026-08'].assignments.c, 52000)
   assert.deepEqual(result.state.categories[0].target?.snoozedMonths, ['2026-08'])
   assert.equal(getAccountBalance(result.state, 'a'), 1452000)
+  assert.equal(result.state.allocationEvents.length, 1)
+  assert.equal(result.state.allocationEvents[0].changes[0].after, 52000)
   assert.equal('type' in result.state.accounts[0], false)
   assert.equal('cleared' in result.state.transactions[0], false)
 })
