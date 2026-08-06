@@ -172,7 +172,6 @@ export const useBudgetStore = (
           ...current.months,
           [month]: {
             month,
-            ...(previousMonth?.note ? { note: previousMonth.note } : {}),
             assignments: {
               ...(previousMonth?.assignments ?? {}),
               [categoryId]: nextAmount,
@@ -210,8 +209,7 @@ export const useBudgetStore = (
             ...stateBefore.months,
             [month]: {
               month,
-              ...(previousMonth?.note ? { note: previousMonth.note } : {}),
-              assignments,
+                assignments,
             },
           },
         }
@@ -248,7 +246,6 @@ export const useBudgetStore = (
           ...current.months,
           [month]: {
             month,
-            ...(previousMonth?.note ? { note: previousMonth.note } : {}),
             assignments,
           },
         },
@@ -284,14 +281,14 @@ export const useBudgetStore = (
   }, [commit])
 
   const addTransaction = useCallback((transaction: Omit<Transaction, 'id'>) => {
-    commit(`Added ${transaction.payee}`, (current) => ({
+    commit(`Added ${transaction.payee || 'transaction'}`, (current) => ({
       ...current,
       transactions: [...current.transactions, { ...transaction, id: uid('transaction') }],
     }))
   }, [commit])
 
   const updateTransaction = useCallback((transactionId: string, changes: Omit<Transaction, 'id'>) => {
-    commit(`Updated ${changes.payee}`, (current) => ({
+    commit(`Updated ${changes.payee || 'transaction'}`, (current) => ({
       ...current,
       transactions: current.transactions.map((transaction) =>
         transaction.id === transactionId ? { id: transactionId, ...changes } : transaction,
@@ -300,7 +297,7 @@ export const useBudgetStore = (
   }, [commit])
 
   const deleteTransaction = useCallback((transactionId: string) => {
-    const payee = stateRef.current.transactions.find((transaction) => transaction.id === transactionId)?.payee ?? 'transaction'
+    const payee = stateRef.current.transactions.find((transaction) => transaction.id === transactionId)?.payee || 'transaction'
     commit(`Deleted ${payee}`, (current) => ({
       ...current,
       transactions: current.transactions.filter((transaction) => transaction.id !== transactionId),
@@ -359,7 +356,6 @@ export const useBudgetStore = (
             accountId: id,
             date: new Date().toISOString().slice(0, 10),
             payee: 'Opening balance',
-            memo: '',
             categoryId: null,
             amount: openingBalance,
           }

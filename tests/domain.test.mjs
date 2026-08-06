@@ -12,7 +12,7 @@ import {
 } from '../src/domain.ts'
 
 const baseState = {
-  version: 4,
+  version: 5,
   name: 'Test',
   currency: 'USD',
   activeMonth: '2026-08',
@@ -144,8 +144,8 @@ test('cash overspending resets the category and reduces next month Ready to Assi
     categories: [category],
     accounts: [{ id: 'a', name: 'Cash' }],
     transactions: [
-      { id: 'income', accountId: 'a', date: '2026-04-01', payee: 'Income', memo: '', categoryId: null, amount: 10000 },
-      { id: 'spend', accountId: 'a', date: '2026-04-20', payee: 'Shop', memo: '', categoryId: 'food', amount: -12000 },
+      { id: 'income', accountId: 'a', date: '2026-04-01', payee: 'Income', categoryId: null, amount: 10000 },
+      { id: 'spend', accountId: 'a', date: '2026-04-20', payee: 'Shop', categoryId: 'food', amount: -12000 },
     ],
     months: {
       '2026-04': { month: '2026-04', assignments: { food: 10000 } },
@@ -165,9 +165,9 @@ test('later assignments consume Ready to Assign left in earlier months', () => {
     categories: [category],
     accounts: [{ id: 'a', name: 'Cash' }],
     transactions: [
-      { id: 'may-income', accountId: 'a', date: '2026-05-01', payee: 'Income', memo: '', categoryId: null, amount: 10000 },
-      { id: 'jun-income', accountId: 'a', date: '2026-06-01', payee: 'Income', memo: '', categoryId: null, amount: 10000 },
-      { id: 'jul-income', accountId: 'a', date: '2026-07-01', payee: 'Income', memo: '', categoryId: null, amount: 10000 },
+      { id: 'may-income', accountId: 'a', date: '2026-05-01', payee: 'Income', categoryId: null, amount: 10000 },
+      { id: 'jun-income', accountId: 'a', date: '2026-06-01', payee: 'Income', categoryId: null, amount: 10000 },
+      { id: 'jul-income', accountId: 'a', date: '2026-07-01', payee: 'Income', categoryId: null, amount: 10000 },
     ],
     months: {
       '2026-05': { month: '2026-05', assignments: { general: 6000 } },
@@ -180,7 +180,7 @@ test('later assignments consume Ready to Assign left in earlier months', () => {
   assert.equal(getReadyToAssign(state, '2026-07'), 0)
 })
 
-test('version 2 budgets migrate to one account model without cleared state', () => {
+test('older budgets migrate to the simplified model and keep notes only on categories', () => {
   const migrated = normalizeBudgetState({
     version: 2,
     name: 'Old',
@@ -188,23 +188,27 @@ test('version 2 budgets migrate to one account model without cleared state', () 
     activeMonth: '2026-08',
     groups: [{ id: 'g', name: 'General' }],
     categories: [],
-    accounts: [{ id: 'a', name: 'Card', type: 'credit', onBudget: true }],
+    accounts: [{ id: 'a', name: 'Card', note: 'Remove me', type: 'credit', onBudget: true }],
     transactions: [{
       id: 't',
       accountId: 'a',
       date: '2026-08-01',
-      payee: 'Opening balance',
-      memo: '',
+      payee: '',
+      memo: 'Remove me',
       categoryId: null,
       amount: 1000,
       cleared: true,
     }],
-    months: { '2026-08': { month: '2026-08', assignments: {} } },
+    months: { '2026-08': { month: '2026-08', assignments: {}, note: 'Remove me' } },
   })
-  assert.equal(migrated.version, 4)
+  assert.equal(migrated.version, 5)
   assert.deepEqual(migrated.allocationEvents, [])
   assert.deepEqual(migrated.accounts[0], { id: 'a', name: 'Card' })
   assert.equal('cleared' in migrated.transactions[0], false)
+  assert.equal('note' in migrated.accounts[0], false)
+  assert.equal('memo' in migrated.transactions[0], false)
+  assert.equal('note' in migrated.months['2026-08'], false)
+  assert.equal(migrated.transactions[0].payee, '')
 })
 
 test('nYNAB imports convert milliunits, assignments, goals, snoozing, and balances', () => {
@@ -215,13 +219,14 @@ test('nYNAB imports convert milliunits, assignments, goals, snoozing, and balanc
         currency_format: { iso_code: 'THB', decimal_digits: 2 },
         last_month: '2026-08-01',
         last_modified_on: '2026-08-05T12:00:00Z',
-        accounts: [{ id: 'a', name: 'Cash', balance: 14520000, deleted: false, closed: false }],
+        accounts: [{ id: 'a', name: 'Cash', note: 'Ignore account note', balance: 14520000, deleted: false, closed: false }],
         payees: [{ id: 'p', name: 'Starting Balance', deleted: false }],
         category_groups: [{ id: 'g', name: 'Bills', deleted: false }],
         categories: [{
           id: 'c',
           category_group_id: 'g',
           name: 'Rent',
+          note: 'Keep category note',
           internal: false,
           deleted: false,
           goal_type: 'NEED',
@@ -233,6 +238,7 @@ test('nYNAB imports convert milliunits, assignments, goals, snoozing, and balanc
         }],
         months: [{
           month: '2026-08-01',
+          note: 'Ignore month note',
           deleted: false,
           categories: [{
             id: 'c',
@@ -245,6 +251,7 @@ test('nYNAB imports convert milliunits, assignments, goals, snoozing, and balanc
           account_id: 'a',
           date: '2026-08-01',
           payee_id: 'p',
+          memo: 'Ignore transaction memo',
           category_id: null,
           amount: 14520000,
           deleted: false,
@@ -258,6 +265,10 @@ test('nYNAB imports convert milliunits, assignments, goals, snoozing, and balanc
   const result = parseImportedBudget(raw)
   assert.equal(result.source, 'nynab')
   assert.equal(result.state.currency, 'THB')
+  assert.equal(result.state.categories[0].note, 'Keep category note')
+  assert.equal('note' in result.state.accounts[0], false)
+  assert.equal('memo' in result.state.transactions[0], false)
+  assert.equal('note' in result.state.months['2026-08'], false)
   assert.equal(result.state.categories[0].target?.amount, 1452000)
   assert.equal(result.state.months['2026-08'].assignments.c, 52000)
   assert.deepEqual(result.state.categories[0].target?.snoozedMonths, ['2026-08'])
