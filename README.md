@@ -64,7 +64,7 @@ Rubies deliberately uses one account model:
 - no cash/credit/tracking account types
 - no credit-card payment workflow
 - no cleared/uncleared or reconciliation state
-- add, rename, annotate, close, and reopen accounts
+- add, rename, close, and reopen accounts
 - add, edit, and delete income or expense transactions
 - account filtering and live balances
 
