@@ -6,7 +6,7 @@ Rubies 2026.8.6.3 is a static React PWA served by Nginx. It requires no external
 
 ### Layers
 
-- `src/domain.ts` — version-4 data model, integer-money calculations, target recommendations, Ready to Assign, migration, and nYNAB import
+- `src/domain.ts` — version-5 data model, integer-money calculations, target recommendations, Ready to Assign, migration, and nYNAB import
 - `src/vault.ts` — PBKDF2 password derivation and AES-GCM encrypted local persistence
 - `src/store.ts` — assignments, money movement, target snoozing, categories, groups, simple accounts, and transactions
 - `src/App.tsx` — password gate, responsive workspace, confirmed allocation editing, undo, and allocation history, dialogs, import, and demo mode
@@ -20,7 +20,7 @@ Every monetary value is stored as an integer number of minor currency units. For
 
 nYNAB exports use milliunits. The importer converts them according to `currency_format.decimal_digits`; for a two-decimal currency, `14520000` nYNAB milliunits become `1452000` Rubies minor units, or `14,520.00`.
 
-## Version-4 budget model
+## Version-5 budget model
 
 Accounts intentionally have no type. Every account participates in the budget, and its balance is the sum of its transactions.
 
