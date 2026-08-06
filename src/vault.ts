@@ -1,4 +1,4 @@
-import type { BudgetState } from './domain'
+import { normalizeBudgetState, type BudgetState } from './domain'
 
 const VAULT_KEY = 'rubies-encrypted-vault-v1'
 const ITERATIONS = 310_000
@@ -91,9 +91,7 @@ export const openVault = async (password: string): Promise<BudgetState> => {
       key,
       toArrayBuffer(base64ToBytes(payload.ciphertext)),
     )
-    const state = JSON.parse(new TextDecoder().decode(plaintext)) as BudgetState
-    if (state.version !== 2) throw new Error('Unsupported budget data version.')
-    return state
+    return normalizeBudgetState(JSON.parse(new TextDecoder().decode(plaintext)))
   } catch (error) {
     if (error instanceof Error && error.message.includes('Unsupported')) throw error
     throw new Error('That password is incorrect, or the vault is damaged.')

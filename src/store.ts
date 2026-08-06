@@ -11,8 +11,14 @@ import { getCategorySummary, getReadyToAssign, uid } from './domain'
 export interface BudgetActions {
   setActiveMonth: (month: string) => void
   setAssignment: (month: string, categoryId: string, amount: number) => void
-  moveMoney: (month: string, fromCategoryId: string | null, toCategoryId: string | null, amount: number) => void
+  moveMoney: (
+    month: string,
+    fromCategoryId: string | null,
+    toCategoryId: string | null,
+    amount: number,
+  ) => void
   autoAssignTargets: (month: string) => void
+  toggleTargetSnooze: (month: string, categoryId: string) => void
   addTransaction: (transaction: Omit<Transaction, 'id'>) => void
   updateTransaction: (transactionId: string, changes: Omit<Transaction, 'id'>) => void
   deleteTransaction: (transactionId: string) => void
@@ -58,31 +64,43 @@ export const useBudgetStore = (
   }, [])
 
   const setAssignment = useCallback((month: string, categoryId: string, amount: number) => {
-    setState((current) => ({
-      ...current,
-      months: {
-        ...current.months,
-        [month]: {
-          month,
-          assignments: {
-            ...(current.months[month]?.assignments ?? {}),
-            [categoryId]: amount,
+    setState((current) => {
+      const previousMonth = current.months[month]
+      return {
+        ...current,
+        months: {
+          ...current.months,
+          [month]: {
+            month,
+            ...(previousMonth?.note ? { note: previousMonth.note } : {}),
+            assignments: {
+              ...(previousMonth?.assignments ?? {}),
+              [categoryId]: Math.round(amount),
+            },
           },
         },
-      },
-    }))
+      }
+    })
   }, [])
 
   const moveMoney = useCallback(
     (month: string, fromCategoryId: string | null, toCategoryId: string | null, amount: number) => {
       if (amount <= 0 || fromCategoryId === toCategoryId) return
       setState((current) => {
-        const assignments = { ...(current.months[month]?.assignments ?? {}) }
+        const previousMonth = current.months[month]
+        const assignments = { ...(previousMonth?.assignments ?? {}) }
         if (fromCategoryId) assignments[fromCategoryId] = (assignments[fromCategoryId] ?? 0) - amount
         if (toCategoryId) assignments[toCategoryId] = (assignments[toCategoryId] ?? 0) + amount
         return {
           ...current,
-          months: { ...current.months, [month]: { month, assignments } },
+          months: {
+            ...current.months,
+            [month]: {
+              month,
+              ...(previousMonth?.note ? { note: previousMonth.note } : {}),
+              assignments,
+            },
+          },
         }
       })
     },
@@ -93,10 +111,11 @@ export const useBudgetStore = (
     setState((current) => {
       let remaining = Math.max(0, getReadyToAssign(current, month))
       if (remaining === 0) return current
-      const assignments = { ...(current.months[month]?.assignments ?? {}) }
+      const previousMonth = current.months[month]
+      const assignments = { ...(previousMonth?.assignments ?? {}) }
 
       for (const category of current.categories.filter((item) => !item.hidden)) {
-        const needed = getCategorySummary(current, category, month).target?.needed ?? 0
+        const needed = getCategorySummary(current, category, month).target?.leftToAssign ?? 0
         const amount = Math.min(needed, remaining)
         if (amount > 0) {
           assignments[category.id] = (assignments[category.id] ?? 0) + amount
@@ -105,8 +124,37 @@ export const useBudgetStore = (
         if (remaining === 0) break
       }
 
-      return { ...current, months: { ...current.months, [month]: { month, assignments } } }
+      return {
+        ...current,
+        months: {
+          ...current.months,
+          [month]: {
+            month,
+            ...(previousMonth?.note ? { note: previousMonth.note } : {}),
+            assignments,
+          },
+        },
+      }
     })
+  }, [])
+
+  const toggleTargetSnooze = useCallback((month: string, categoryId: string) => {
+    setState((current) => ({
+      ...current,
+      categories: current.categories.map((category) => {
+        if (category.id !== categoryId || !category.target) return category
+        const months = new Set(category.target.snoozedMonths ?? [])
+        if (months.has(month)) months.delete(month)
+        else months.add(month)
+        return {
+          ...category,
+          target: {
+            ...category.target,
+            ...(months.size > 0 ? { snoozedMonths: [...months].sort() } : { snoozedMonths: undefined }),
+          },
+        }
+      }),
+    }))
   }, [])
 
   const addTransaction = useCallback((transaction: Omit<Transaction, 'id'>) => {
@@ -176,20 +224,21 @@ export const useBudgetStore = (
   const addAccount = useCallback((account: Omit<Account, 'id'>, openingBalance: number) => {
     setState((current) => {
       const id = uid('account')
-      const nextAccount = { ...account, id }
-      const openingTransaction: Transaction | null = openingBalance === 0 ? null : {
-        id: uid('transaction'),
-        accountId: id,
-        date: new Date().toISOString().slice(0, 10),
-        payee: 'Opening balance',
-        memo: '',
-        categoryId: account.onBudget ? null : null,
-        amount: openingBalance,
-        cleared: true,
-      }
+      const openingTransaction: Transaction | null = openingBalance === 0
+        ? null
+        : {
+            id: uid('transaction'),
+            accountId: id,
+            date: new Date().toISOString().slice(0, 10),
+            payee: 'Opening balance',
+            memo: '',
+            categoryId: null,
+            amount: openingBalance,
+          }
+
       return {
         ...current,
-        accounts: [...current.accounts, nextAccount],
+        accounts: [...current.accounts, { ...account, id }],
         transactions: openingTransaction
           ? [...current.transactions, openingTransaction]
           : current.transactions,
@@ -206,11 +255,7 @@ export const useBudgetStore = (
     }))
   }, [])
 
-  const importState = useCallback((next: BudgetState) => {
-    if (next.version !== 2) throw new Error('Unsupported Rubies data version')
-    setState(next)
-  }, [])
-
+  const importState = useCallback((next: BudgetState) => setState(next), [])
   const replaceState = useCallback((next: BudgetState) => setState(next), [])
 
   const actions = useMemo<BudgetActions>(() => ({
@@ -218,6 +263,7 @@ export const useBudgetStore = (
     setAssignment,
     moveMoney,
     autoAssignTargets,
+    toggleTargetSnooze,
     addTransaction,
     updateTransaction,
     deleteTransaction,
@@ -235,6 +281,7 @@ export const useBudgetStore = (
     setAssignment,
     moveMoney,
     autoAssignTargets,
+    toggleTargetSnooze,
     addTransaction,
     updateTransaction,
     deleteTransaction,

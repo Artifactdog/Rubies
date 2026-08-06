@@ -1,510 +1,1426 @@
-import { type ChangeEvent, type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState, } from 'react';
-import { type Account, type BudgetState, type Category, type CategoryTarget, type Transaction, createDemoState, createEmptyState, formatMoney, getAccountBalance, getBudgetBalance, getCategorySummary, getReadyToAssign, getRecentTransactions, monthEndDate, monthLabel, parseDateList, parseMoney, shiftMonth, } from './domain';
-import { useBudgetStore } from './store';
-import { deleteVault, hasVault, openVault, saveVault } from './vault';
-import { APP_VERSION } from './version';
+import {
+  type ChangeEvent,
+  type CSSProperties,
+  type FormEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+import {
+  type Account,
+  type BudgetState,
+  type Category,
+  type CategoryTarget,
+  type Transaction,
+  createDemoState,
+  createEmptyState,
+  currentMonthKey,
+  formatMoney,
+  getAccountBalance,
+  getBudgetBalance,
+  getCategorySummary,
+  getMonthFundingSummary,
+  getReadyToAssign,
+  getRecentTransactions,
+  monthEndDate,
+  monthLabel,
+  normalizeBudgetState,
+  parseDateList,
+  parseImportedBudget,
+  parseMoney,
+  shiftMonth,
+  todayKey,
+} from './domain'
+import { useBudgetStore } from './store'
+import { deleteVault, hasVault, openVault, saveVault } from './vault'
+import { APP_VERSION } from './version'
+
 interface BeforeInstallPromptEvent extends Event {
-    prompt: () => Promise<void>;
-    userChoice: Promise<{
-        outcome: 'accepted' | 'dismissed';
-        platform: string;
-    }>;
+  prompt: () => Promise<void>
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
 }
-type View = 'plan' | 'accounts';
-type Session = {
-    mode: 'protected';
-    state: BudgetState;
-    password: string;
-} | {
-    mode: 'demo';
-    state: BudgetState;
-};
-type CategoryDialogState = {
-    mode: 'create';
-    groupId: string;
-} | {
-    mode: 'edit';
-    category: Category;
-} | null;
-type TransactionDialogState = {
-    transaction?: Transaction;
-} | null;
-const Icon = ({ children, size = 18 }: {
-    children: ReactNode;
-    size?: number;
-}) => (<svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+
+type View = 'plan' | 'accounts'
+
+type Session =
+  | { mode: 'protected'; state: BudgetState; password: string }
+  | { mode: 'demo'; state: BudgetState }
+
+type CategoryDialogState =
+  | { mode: 'create'; groupId: string }
+  | { mode: 'edit'; category: Category }
+  | null
+
+type TransactionDialogState = { transaction?: Transaction } | null
+
+type MovePreset = { from?: string | null; to?: string | null }
+
+const Icon = ({ children, size = 18 }: { children: ReactNode; size?: number }) => (
+  <svg
+    aria-hidden="true"
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
     {children}
-  </svg>);
-const PlanIcon = () => <Icon><path d="M4 5.5h16M4 12h16M4 18.5h16"/><path d="M8 3v5M15 9.5v5M11 16v5"/></Icon>;
-const AccountIcon = () => <Icon><path d="M3.5 9.5 12 4l8.5 5.5"/><path d="M5 10.5h14v8H5zM8 13.5h2M14 13.5h2"/></Icon>;
-const PlusIcon = () => <Icon><path d="M12 5v14M5 12h14"/></Icon>;
-const MoveIcon = () => <Icon><path d="M7 7h11l-3-3M17 17H6l3 3"/><path d="M18 7l-3 3M6 17l3-3"/></Icon>;
-const TargetIcon = () => <Icon><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="m14 10 5-5"/></Icon>;
-const LockIcon = () => <Icon><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></Icon>;
-const SettingsIcon = () => <Icon><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.09a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.09a1.7 1.7 0 0 0 1.6-1.1 1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.09a1.7 1.7 0 0 0 1.1 1.6 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.14.37.35.7.6 1 .29.3.68.46 1.1.4h.09v4h-.09a1.7 1.7 0 0 0-1.7.6Z"/></Icon>;
-const DownloadIcon = () => <Icon><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></Icon>;
-const UploadIcon = () => <Icon><path d="M12 21V9M7 14l5-5 5 5M5 3h14"/></Icon>;
-const InstallIcon = () => <Icon><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 7h6M12 10v6M9.5 13.5 12 16l2.5-2.5"/></Icon>;
-const EditIcon = () => <Icon size={15}><path d="m4 20 4.5-1 10-10a2 2 0 0 0-3-3l-10 10L4 20Z"/><path d="m14 7 3 3"/></Icon>;
-const ChevronIcon = ({ direction }: {
-    direction: 'left' | 'right';
-}) => <Icon size={16}><path d={direction === 'left' ? 'm15 18-6-6 6-6' : 'm9 18 6-6-6-6'}/></Icon>;
-const RubyMark = () => <div className="ruby-mark" aria-hidden="true"><span /></div>;
-const StatusDot = ({ status }: {
-    status: 'healthy' | 'underfunded' | 'overspent';
-}) => <span className={`status-dot ${status}`} aria-label={status}/>;
-const MoneyInput = ({ value, onCommit, ariaLabel }: {
-    value: number;
-    onCommit: (value: number) => void;
-    ariaLabel: string;
-}) => {
-    const [draft, setDraft] = useState((value / 100).toFixed(2));
-    useEffect(() => setDraft((value / 100).toFixed(2)), [value]);
-    const commit = () => {
-        const parsed = parseMoney(draft);
-        setDraft((parsed / 100).toFixed(2));
-        onCommit(parsed);
-    };
-    return <input className="money-input" aria-label={ariaLabel} inputMode="decimal" value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={commit} onKeyDown={(event) => { if (event.key === 'Enter')
-        event.currentTarget.blur(); }}/>;
-};
-const DialogFrame = ({ title, subtitle, onClose, children, wide = false }: {
-    title: string;
-    subtitle: string;
-    onClose: () => void;
-    children: ReactNode;
-    wide?: boolean;
-}) => {
-    useEffect(() => {
-        const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape')
-            onClose(); };
-        window.addEventListener('keydown', onKeyDown);
-        return () => window.removeEventListener('keydown', onKeyDown);
-    }, [onClose]);
-    return (<div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target)
-        onClose(); }}>
-      <section className={`dialog ${wide ? 'dialog-wide' : ''}`} role="dialog" aria-modal="true" aria-labelledby="dialog-title">
-        <header><div><span className="eyebrow">Rubies workspace</span><h2 id="dialog-title">{title}</h2><p>{subtitle}</p></div><button className="close-button" aria-label="Close" onClick={onClose}>×</button></header>
-        {children}
-      </section>
-    </div>);
-};
-function App() {
-    const [session, setSession] = useState<Session | null>(null);
-    const [vaultPresent, setVaultPresent] = useState(hasVault());
-    if (!session) {
-        return <AccessScreen vaultPresent={vaultPresent} onProtected={(state, password) => { setVaultPresent(true); setSession({ mode: 'protected', state, password }); }} onDemo={() => setSession({ mode: 'demo', state: createDemoState() })} onDeleteVault={() => { deleteVault(); setVaultPresent(false); }}/>;
+  </svg>
+)
+
+const PlanIcon = () => <Icon><path d="M4 5.5h16M4 12h16M4 18.5h16"/><path d="M8 3v5M15 9.5v5M11 16v5"/></Icon>
+const AccountIcon = () => <Icon><path d="M3.5 9.5 12 4l8.5 5.5"/><path d="M5 10.5h14v8H5zM8 13.5h2M14 13.5h2"/></Icon>
+const PlusIcon = () => <Icon><path d="M12 5v14M5 12h14"/></Icon>
+const MoveIcon = () => <Icon><path d="M7 7h11l-3-3M17 17H6l3 3"/><path d="M18 7l-3 3M6 17l3-3"/></Icon>
+const TargetIcon = () => <Icon><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="m14 10 5-5"/></Icon>
+const LockIcon = () => <Icon><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></Icon>
+const SettingsIcon = () => <Icon><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.12-1.3l2-1.55-2-3.46-2.45 1A7 7 0 0 0 14.2 5.4L13.85 3h-4l-.35 2.4a7 7 0 0 0-2.23 1.29l-2.45-1-2 3.46 2 1.55A7 7 0 0 0 4.7 12c0 .45.04.88.12 1.3l-2 1.55 2 3.46 2.45-1A7 7 0 0 0 9.5 18.6l.35 2.4h4l.35-2.4a7 7 0 0 0 2.23-1.29l2.45 1 2-3.46-2-1.55c.08-.42.12-.85.12-1.3Z"/></Icon>
+const DownloadIcon = () => <Icon><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></Icon>
+const UploadIcon = () => <Icon><path d="M12 21V9M7 14l5-5 5 5M5 3h14"/></Icon>
+const EditIcon = () => <Icon size={15}><path d="m4 20 4.5-1 10-10a2 2 0 0 0-3-3l-10 10L4 20Z"/><path d="m14 7 3 3"/></Icon>
+const ChevronIcon = ({ direction }: { direction: 'left' | 'right' }) => (
+  <Icon size={17}><path d={direction === 'left' ? 'm15 18-6-6 6-6' : 'm9 18 6-6-6-6'}/></Icon>
+)
+const CalendarIcon = () => <Icon><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/></Icon>
+const SnoozeIcon = () => <Icon><path d="M7 7h7l-7 7h7M15 4h5l-5 5h5"/></Icon>
+
+const RubyMark = () => <div className="ruby-mark" aria-hidden="true"><span /></div>
+
+const DialogFrame = ({
+  title,
+  subtitle,
+  children,
+  onClose,
+  wide = false,
+}: {
+  title: string
+  subtitle?: string
+  children: ReactNode
+  onClose: () => void
+  wide?: boolean
+}) => (
+  <div className="dialog-backdrop" role="presentation" onMouseDown={onClose}>
+    <section
+      className={`dialog-card${wide ? ' dialog-wide' : ''}`}
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      onMouseDown={(event) => event.stopPropagation()}
+    >
+      <header className="dialog-header">
+        <div>
+          <h2>{title}</h2>
+          {subtitle && <p>{subtitle}</p>}
+        </div>
+        <button className="icon-button" onClick={onClose} aria-label="Close">×</button>
+      </header>
+      <div className="dialog-content">{children}</div>
+    </section>
+  </div>
+)
+
+const AccessGate = ({ onOpen }: { onOpen: (session: Session) => void }) => {
+  const [existing, setExisting] = useState(hasVault())
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [budgetName, setBudgetName] = useState('My budget')
+  const [currency, setCurrency] = useState('USD')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const unlock = async (event: FormEvent) => {
+    event.preventDefault()
+    setBusy(true)
+    setError('')
+    try {
+      const state = await openVault(password)
+      onOpen({ mode: 'protected', state, password })
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not unlock the budget.')
+    } finally {
+      setBusy(false)
     }
-    return <BudgetApp key={session.mode} session={session} onLock={() => setSession(null)} onPasswordChanged={(password) => { if (session.mode === 'protected')
-        setSession({ ...session, password }); }}/>;
-}
-const AccessScreen = ({ vaultPresent, onProtected, onDemo, onDeleteVault }: {
-    vaultPresent: boolean;
-    onProtected: (state: BudgetState, password: string) => void;
-    onDemo: () => void;
-    onDeleteVault: () => void;
-}) => {
-    const [password, setPassword] = useState('');
-    const [confirmPassword, setConfirmPassword] = useState('');
-    const [busy, setBusy] = useState(false);
-    const [error, setError] = useState('');
-    const submit = async (event: FormEvent) => {
-        event.preventDefault();
-        setError('');
-        if (!vaultPresent && password.length < 8) {
-            setError('Use at least 8 characters. A longer passphrase is better.');
-            return;
-        }
-        if (!vaultPresent && password !== confirmPassword) {
-            setError('The passwords do not match.');
-            return;
-        }
-        setBusy(true);
-        try {
-            if (vaultPresent) {
-                const state = await openVault(password);
-                onProtected(state, password);
-            }
-            else {
-                const state = createEmptyState();
-                await saveVault(state, password);
-                onProtected(state, password);
-            }
-        }
-        catch (caught) {
-            setError(caught instanceof Error ? caught.message : 'Could not open the budget.');
-        }
-        finally {
-            setBusy(false);
-        }
-    };
-    const resetVault = () => {
-        if (window.confirm('Delete the encrypted budget stored on this device? This cannot be undone without an export.'))
-            onDeleteVault();
-    };
-    return (<main className="access-shell">
+  }
+
+  const create = async (event: FormEvent) => {
+    event.preventDefault()
+    if (password.length < 8) {
+      setError('Use at least 8 characters for the password.')
+      return
+    }
+    if (password !== confirm) {
+      setError('The passwords do not match.')
+      return
+    }
+
+    setBusy(true)
+    setError('')
+    try {
+      const state = createEmptyState()
+      state.name = budgetName.trim() || 'My budget'
+      state.currency = currency.trim().toUpperCase() || 'USD'
+      await saveVault(state, password)
+      onOpen({ mode: 'protected', state, password })
+    } catch {
+      setError('Could not create the encrypted local vault.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const startOver = () => {
+    if (!window.confirm('Delete the encrypted budget stored in this browser? This cannot be undone.')) return
+    deleteVault()
+    setExisting(false)
+    setPassword('')
+    setConfirm('')
+    setError('')
+  }
+
+  return (
+    <main className="access-shell">
       <section className="access-card">
-        <div className="access-brand"><RubyMark /><div><strong>Rubies</strong><span>Private zero-based budgeting</span></div></div>
-        <div className="access-copy">
-          <span className="eyebrow">{vaultPresent ? 'Protected budget found' : 'First-time setup'}</span>
-          <h1>{vaultPresent ? 'Unlock your budget' : 'Protect your budget first'}</h1>
-          <p>{vaultPresent ? 'Your data is encrypted on this device. Enter the password to decrypt it for this session.' : 'Create a password before storing financial data. Rubies encrypts the entire budget locally and never stores the password.'}</p>
+        <div className="access-brand">
+          <RubyMark />
+          <div><strong>Rubies</strong><span>Private envelope budgeting</span></div>
         </div>
-        <form onSubmit={submit} className="access-form">
-          <label>Password<input type="password" autoComplete={vaultPresent ? 'current-password' : 'new-password'} value={password} onChange={(event) => setPassword(event.target.value)} autoFocus required/></label>
-          {!vaultPresent && <label>Confirm password<input type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required/></label>}
-          {error && <div className="form-error" role="alert">{error}</div>}
-          <button className="primary-button access-primary" type="submit" disabled={busy}><LockIcon />{busy ? 'Working…' : vaultPresent ? 'Unlock budget' : 'Create protected budget'}</button>
-        </form>
+
+        {existing ? (
+          <>
+            <div className="access-copy">
+              <span className="eyebrow">Protected local vault</span>
+              <h1>Welcome back</h1>
+              <p>Your budget is encrypted in this browser. Enter the password to unlock it.</p>
+            </div>
+            <form className="access-form" onSubmit={unlock}>
+              <label>Password
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  autoComplete="current-password"
+                  autoFocus
+                />
+              </label>
+              {error && <div className="form-error">{error}</div>}
+              <button className="primary-button access-primary" disabled={busy || !password}>
+                {busy ? 'Unlocking…' : 'Unlock budget'}
+              </button>
+            </form>
+            <button className="text-button danger-text" onClick={startOver}>Delete local vault</button>
+          </>
+        ) : (
+          <>
+            <div className="access-copy">
+              <span className="eyebrow">First run</span>
+              <h1>Create your protected budget</h1>
+              <p>Rubies encrypts your budget before saving it locally. There is no password recovery.</p>
+            </div>
+            <form className="access-form" onSubmit={create}>
+              <label>Budget name
+                <input value={budgetName} onChange={(event) => setBudgetName(event.target.value)} autoFocus />
+              </label>
+              <label>Currency code
+                <input value={currency} onChange={(event) => setCurrency(event.target.value)} maxLength={3} />
+              </label>
+              <label>Password
+                <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" />
+              </label>
+              <label>Confirm password
+                <input type="password" value={confirm} onChange={(event) => setConfirm(event.target.value)} autoComplete="new-password" />
+              </label>
+              {error && <div className="form-error">{error}</div>}
+              <button className="primary-button access-primary" disabled={busy}>
+                {busy ? 'Creating…' : 'Create encrypted budget'}
+              </button>
+            </form>
+          </>
+        )}
+
         <div className="access-divider"><span>or</span></div>
-        <button className="demo-button" onClick={onDemo}><RubyMark /><span><strong>Enter demo mode</strong><small>Try a realistic pre-filled budget. Changes are discarded when you leave.</small></span></button>
-        {vaultPresent && <button className="danger-link" onClick={resetVault}>Delete local vault and start over</button>}
-        <p className="security-note"><LockIcon />Encrypted with PBKDF2 and AES-GCM. Locking or closing the tab removes the decrypted session from memory.</p>
+        <button className="demo-button" onClick={() => onOpen({ mode: 'demo', state: createDemoState() })}>
+          <span className="demo-icon">◆</span>
+          <span><strong>Enter demo mode</strong><small>Try a complete sample budget without saving anything.</small></span>
+        </button>
       </section>
-    </main>);
-};
-const BudgetApp = ({ session, onLock, onPasswordChanged }: {
-    session: Session;
-    onLock: () => void;
-    onPasswordChanged: (password: string) => void;
+    </main>
+  )
+}
+
+const AllocationControl = ({
+  value,
+  required,
+  left,
+  currency,
+  onChange,
+}: {
+  value: number
+  required: number
+  left: number
+  currency: string
+  onChange: (value: number) => void
 }) => {
-    const [password, setPassword] = useState(session.mode === 'protected' ? session.password : '');
-    const passwordRef = useRef(password);
-    const persist = useCallback((state: BudgetState) => session.mode === 'protected' ? saveVault(state, passwordRef.current) : Promise.resolve(), [session.mode]);
-    const [state, actions, saveStatus] = useBudgetStore(session.state, session.mode === 'protected' ? persist : undefined);
-    const [view, setView] = useState<View>('plan');
-    const [selectedAccountId, setSelectedAccountId] = useState<string | undefined>();
-    const [transactionDialog, setTransactionDialog] = useState<TransactionDialogState>(null);
-    const [categoryDialog, setCategoryDialog] = useState<CategoryDialogState>(null);
-    const [moveOpen, setMoveOpen] = useState<{
-        from?: string | null;
-        to?: string | null;
-    } | null>(null);
-    const [groupDialogId, setGroupDialogId] = useState<string | 'new' | null>(null);
-    const [accountDialog, setAccountDialog] = useState<Account | 'new' | null>(null);
-    const [settingsOpen, setSettingsOpen] = useState(false);
-    const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-    const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
-    const importInputRef = useRef<HTMLInputElement>(null);
-    const readyToAssign = useMemo(() => getReadyToAssign(state, state.activeMonth), [state]);
-    useEffect(() => {
-        const onBeforeInstall = (event: Event) => { event.preventDefault(); setInstallPrompt(event as BeforeInstallPromptEvent); };
-        window.addEventListener('beforeinstallprompt', onBeforeInstall);
-        return () => window.removeEventListener('beforeinstallprompt', onBeforeInstall);
-    }, []);
-    useEffect(() => {
-        const onKeyDown = (event: KeyboardEvent) => {
-            if (event.metaKey || event.ctrlKey || event.altKey)
-                return;
-            const target = event.target as HTMLElement | null;
-            if (target?.matches('input, textarea, select, button'))
-                return;
-            if (event.key.toLowerCase() === 'n')
-                setTransactionDialog({});
-            if (event.key.toLowerCase() === 'p')
-                setView('plan');
-            if (event.key.toLowerCase() === 'a')
-                setView('accounts');
-            if (event.key.toLowerCase() === 'm')
-                setMoveOpen({});
-        };
-        window.addEventListener('keydown', onKeyDown);
-        return () => window.removeEventListener('keydown', onKeyDown);
-    }, []);
-    useEffect(() => {
-        if (session.mode !== 'protected')
-            return;
-        let timeout = window.setTimeout(onLock, 15 * 60 * 1000);
-        const refresh = () => { window.clearTimeout(timeout); timeout = window.setTimeout(onLock, 15 * 60 * 1000); };
-        const events = ['pointerdown', 'keydown', 'touchstart'] as const;
-        events.forEach((event) => window.addEventListener(event, refresh, { passive: true }));
-        return () => { window.clearTimeout(timeout); events.forEach((event) => window.removeEventListener(event, refresh)); };
-    }, [onLock, session.mode]);
-    const selectAccount = (accountId?: string) => { setSelectedAccountId(accountId); setView('accounts'); };
-    const exportData = () => {
-        const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement('a');
-        anchor.href = url;
-        anchor.download = `rubies-budget-${new Date().toISOString().slice(0, 10)}.json`;
-        anchor.click();
-        URL.revokeObjectURL(url);
-    };
-    const importData = async (event: ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file)
-            return;
-        try {
-            actions.importState(JSON.parse(await file.text()) as BudgetState);
-        }
-        catch (error) {
-            window.alert(error instanceof Error ? error.message : 'Could not import this Rubies file.');
-        }
-        finally {
-            event.target.value = '';
-        }
-    };
-    const install = async () => { if (installPrompt) {
-        await installPrompt.prompt();
-        await installPrompt.userChoice;
-        setInstallPrompt(null);
-    } };
-    const toggleGroup = (groupId: string) => setCollapsedGroups((current) => { const next = new Set(current); next.has(groupId) ? next.delete(groupId) : next.add(groupId); return next; });
-    const changePassword = async (nextPassword: string) => {
-        passwordRef.current = nextPassword;
-        await saveVault(state, nextPassword);
-        setPassword(nextPassword);
-        onPasswordChanged(nextPassword);
-    };
-    return (<div className="app-shell">
-      {session.mode === 'demo' && <div className="demo-banner"><span>Demo mode · changes are temporary</span><button onClick={() => actions.replaceState(createDemoState())}>Reset demo</button></div>}
-      <aside className="sidebar">
-        <div className="brand"><RubyMark /><div><strong>Rubies</strong><span>{state.name}</span></div></div>
-        <nav className="primary-nav" aria-label="Main navigation">
-          <button className={view === 'plan' ? 'active' : ''} onClick={() => setView('plan')}><PlanIcon /><span>Plan</span><kbd>P</kbd></button>
-          <button className={view === 'accounts' && !selectedAccountId ? 'active' : ''} onClick={() => selectAccount(undefined)}><AccountIcon /><span>All accounts</span><kbd>A</kbd></button>
-        </nav>
-        <div className="sidebar-section">
-          <div className="section-heading"><span>Budget accounts</span><button className="tiny-add" onClick={() => setAccountDialog('new')} aria-label="Add account">+</button></div>
-          <div className="account-list">
-            {state.accounts.filter((account) => !account.closed).map((account) => <button key={account.id} className={selectedAccountId === account.id && view === 'accounts' ? 'active' : ''} onClick={() => selectAccount(account.id)}><span className="account-name"><span className={`account-dot ${account.type}`}/>{account.name}</span><span>{formatMoney(getAccountBalance(state, account.id), state.currency)}</span></button>)}
-            {state.accounts.length === 0 && <button className="empty-account-link" onClick={() => setAccountDialog('new')}>+ Add your first account</button>}
-          </div>
-          <div className="sidebar-total"><span>On-budget total</span><strong>{formatMoney(getBudgetBalance(state), state.currency)}</strong></div>
+  const [draft, setDraft] = useState((value / 100).toFixed(2))
+  useEffect(() => setDraft((value / 100).toFixed(2)), [value])
+
+  const sliderMax = Math.max(100_000, Math.ceil(Math.max(required, Math.abs(value), 1) * 1.35 / 100) * 100)
+  const sliderValue = Math.max(0, Math.min(sliderMax, value))
+  const percent = sliderMax === 0 ? 0 : (sliderValue / sliderMax) * 100
+  const step = sliderMax >= 5_000_000 ? 5_000 : sliderMax >= 1_000_000 ? 1_000 : 100
+  const nudge = Math.max(step, Math.ceil(sliderMax / 20 / step) * step)
+
+  const commitDraft = () => {
+    const parsed = parseMoney(draft)
+    setDraft((parsed / 100).toFixed(2))
+    onChange(parsed)
+  }
+
+  return (
+    <div className="allocation-control">
+      <div className="allocation-input-row">
+        <button
+          className="nudge-button"
+          type="button"
+          onClick={() => onChange(value - nudge)}
+          aria-label={`Decrease allocation by ${formatMoney(nudge, currency)}`}
+        >−</button>
+        <div className="money-field">
+          <span>{new Intl.NumberFormat(undefined, { style: 'currency', currency, currencyDisplay: 'narrowSymbol' }).formatToParts(0).find((part) => part.type === 'currency')?.value}</span>
+          <input
+            inputMode="decimal"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onBlur={commitDraft}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                commitDraft()
+                event.currentTarget.blur()
+              }
+            }}
+            aria-label="Assigned this month"
+          />
         </div>
+        <button
+          className="nudge-button"
+          type="button"
+          onClick={() => onChange(value + nudge)}
+          aria-label={`Increase allocation by ${formatMoney(nudge, currency)}`}
+        >+</button>
+        {left > 0 && (
+          <button className="fund-button" type="button" onClick={() => onChange(value + left)}>
+            Fund left
+          </button>
+        )}
+      </div>
+      <input
+        className="money-slider"
+        type="range"
+        min="0"
+        max={sliderMax}
+        step={step}
+        value={sliderValue}
+        onChange={(event) => onChange(Number(event.target.value))}
+        style={{ '--slider-fill': `${percent}%` } as CSSProperties}
+        aria-label="Adjust assigned amount with slider"
+      />
+      <div className="allocation-scale">
+        <span>{formatMoney(0, currency)}</span>
+        <span>{formatMoney(sliderMax, currency)}</span>
+      </div>
+    </div>
+  )
+}
+
+const CategoryRow = ({
+  state,
+  category,
+  onAssignmentChange,
+  onEdit,
+  onMove,
+  onToggleSnooze,
+}: {
+  state: BudgetState
+  category: Category
+  onAssignmentChange: (amount: number) => void
+  onEdit: () => void
+  onMove: () => void
+  onToggleSnooze: () => void
+}) => {
+  const summary = getCategorySummary(state, category, state.activeMonth)
+  const target = summary.target
+  const progress = Math.round((target?.progress ?? 0) * 100)
+
+  return (
+    <article className={`category-row status-${summary.status}`}>
+      <div className="category-identity">
+        <div className="category-title-line">
+          <button className="category-name" onClick={onEdit}>{category.name}</button>
+          <div className="row-actions">
+            {target && (
+              <button className={`mini-action${target.snoozed ? ' active' : ''}`} onClick={onToggleSnooze} title={target.snoozed ? 'Resume target' : 'Snooze target this month'}>
+                <SnoozeIcon />
+              </button>
+            )}
+            <button className="mini-action" onClick={onMove} title="Move money"><MoveIcon /></button>
+            <button className="mini-action" onClick={onEdit} title="Edit category"><EditIcon /></button>
+          </div>
+        </div>
+        <p className="target-description">{target?.label ?? category.note ?? 'No target set'}</p>
+        {target && (
+          <div className="progress-wrap">
+            <div className="progress-track"><span style={{ width: `${progress}%` }} /></div>
+            <span>{progress}%</span>
+          </div>
+        )}
+      </div>
+
+      <div className="target-month-card">
+        {target ? (
+          <>
+            <div><span>Required this month</span><strong>{formatMoney(target.requiredThisMonth, state.currency)}</strong></div>
+            <div><span>Left to assign</span><strong className={target.leftToAssign > 0 ? 'warning-value' : 'good-value'}>{formatMoney(target.leftToAssign, state.currency)}</strong></div>
+            {target.overallLeft !== target.leftToAssign && (
+              <div className="overall-left"><span>Overall left</span><strong>{formatMoney(target.overallLeft, state.currency)}</strong></div>
+            )}
+          </>
+        ) : (
+          <div className="no-target"><TargetIcon /><span>No target</span></div>
+        )}
+      </div>
+
+      <div className="assigned-cell">
+        <span className="cell-label">Assigned this month</span>
+        <AllocationControl
+          value={summary.assigned}
+          required={target?.requiredThisMonth ?? Math.max(0, summary.assigned)}
+          left={target?.leftToAssign ?? 0}
+          currency={state.currency}
+          onChange={onAssignmentChange}
+        />
+      </div>
+
+      <div className="money-stat">
+        <span>Activity</span>
+        <strong className={summary.activity < 0 ? 'negative-value' : ''}>{formatMoney(summary.activity, state.currency)}</strong>
+      </div>
+
+      <div className={`available-card ${summary.available < 0 ? 'negative' : summary.status === 'underfunded' ? 'warning' : 'positive'}`}>
+        <span>Available</span>
+        <strong>{formatMoney(summary.available, state.currency)}</strong>
+      </div>
+    </article>
+  )
+}
+
+const PlanView = ({
+  state,
+  readyToAssign,
+  collapsedGroups,
+  onToggleGroup,
+  onMonthChange,
+  onAssignmentChange,
+  onEditCategory,
+  onAddCategory,
+  onEditGroup,
+  onNewGroup,
+  onNewTransaction,
+  onMove,
+  onAutoAssign,
+  onToggleSnooze,
+}: {
+  state: BudgetState
+  readyToAssign: number
+  collapsedGroups: Set<string>
+  onToggleGroup: (groupId: string) => void
+  onMonthChange: (month: string) => void
+  onAssignmentChange: (month: string, categoryId: string, amount: number) => void
+  onEditCategory: (category: Category) => void
+  onAddCategory: (groupId: string) => void
+  onEditGroup: (groupId: string, name: string) => void
+  onNewGroup: () => void
+  onNewTransaction: () => void
+  onMove: (preset?: MovePreset) => void
+  onAutoAssign: () => void
+  onToggleSnooze: (categoryId: string) => void
+}) => {
+  const funding = getMonthFundingSummary(state, state.activeMonth)
+  const todayMonth = currentMonthKey()
+  const visibleGroups = state.groups.filter((group) => !group.hidden)
+
+  return (
+    <div className="view-shell">
+      <header className="plan-header">
+        <div>
+          <span className="eyebrow">Budget plan</span>
+          <div className="month-navigation">
+            <button className="icon-button" onClick={() => onMonthChange(shiftMonth(state.activeMonth, -1))} aria-label="Previous month"><ChevronIcon direction="left" /></button>
+            <h1>{monthLabel(state.activeMonth)}</h1>
+            <button className="icon-button" onClick={() => onMonthChange(shiftMonth(state.activeMonth, 1))} aria-label="Next month"><ChevronIcon direction="right" /></button>
+            <button
+              className="today-button"
+              onClick={() => onMonthChange(todayMonth)}
+              disabled={state.activeMonth === todayMonth}
+            >
+              <CalendarIcon />Today
+            </button>
+          </div>
+          {state.activeMonth !== todayMonth && (
+            <p className="month-context">
+              Viewing {state.activeMonth < todayMonth ? 'a past' : 'a future'} month. Target recommendations are recalculated for this month.
+            </p>
+          )}
+        </div>
+        <div className="header-actions">
+          <button className="secondary-button" onClick={() => onMove()}><MoveIcon />Move money</button>
+          <button className="secondary-button" onClick={onAutoAssign} disabled={readyToAssign <= 0 || funding.leftToAssign <= 0}><TargetIcon />Auto-assign</button>
+          <button className="primary-button" onClick={onNewTransaction}><PlusIcon />Transaction</button>
+        </div>
+      </header>
+
+      <section className="month-summary-grid">
+        <button className={`summary-card rta-card${readyToAssign < 0 ? ' negative' : ''}`} onClick={() => onMove({ from: null })}>
+          <span>Ready to assign</span>
+          <strong>{formatMoney(readyToAssign, state.currency)}</strong>
+          <small>{readyToAssign >= 0 ? 'Available to distribute' : 'Over-assigned through this month'}</small>
+        </button>
+        <div className="summary-card">
+          <span>Targets this month</span>
+          <strong>{formatMoney(funding.requiredThisMonth, state.currency)}</strong>
+          <small>{funding.targetCount} active target{funding.targetCount === 1 ? '' : 's'}</small>
+        </div>
+        <div className="summary-card">
+          <span>Assigned toward targets</span>
+          <strong>{formatMoney(funding.assignedTowardTargets, state.currency)}</strong>
+          <small>For {monthLabel(state.activeMonth)}</small>
+        </div>
+        <div className={`summary-card${funding.leftToAssign > 0 ? ' warning' : ' complete'}`}>
+          <span>Still to assign</span>
+          <strong>{formatMoney(funding.leftToAssign, state.currency)}</strong>
+          <small>{funding.leftToAssign > 0 ? 'To meet this month’s plan' : 'This month is fully funded'}</small>
+        </div>
+      </section>
+
+      <div className="budget-toolbar">
+        <div>
+          <strong>Categories</strong>
+          <span>Drag a slider, type an exact amount, or fund the remaining recommendation.</span>
+        </div>
+        <button className="secondary-button" onClick={onNewGroup}><PlusIcon />Group</button>
+      </div>
+
+      <div className="category-list">
+        {visibleGroups.map((group) => {
+          const categories = state.categories.filter((category) => category.groupId === group.id && !category.hidden)
+          const collapsed = collapsedGroups.has(group.id)
+          const groupAvailable = categories.reduce(
+            (sum, category) => sum + getCategorySummary(state, category, state.activeMonth).available,
+            0,
+          )
+          const groupLeft = categories.reduce(
+            (sum, category) => sum + (getCategorySummary(state, category, state.activeMonth).target?.leftToAssign ?? 0),
+            0,
+          )
+
+          return (
+            <section className="category-group" key={group.id}>
+              <header className="group-row">
+                <button className="group-name" onClick={() => onToggleGroup(group.id)}>
+                  <span className={`group-chevron${collapsed ? ' collapsed' : ''}`}>⌄</span>
+                  <strong>{group.name}</strong>
+                  <small>{categories.length} categories</small>
+                </button>
+                <div className="group-totals">
+                  <span>Left {formatMoney(groupLeft, state.currency)}</span>
+                  <span>Available {formatMoney(groupAvailable, state.currency)}</span>
+                  <button className="mini-action" onClick={() => onEditGroup(group.id, group.name)} title="Rename group"><EditIcon /></button>
+                  <button className="mini-action" onClick={() => onAddCategory(group.id)} title="Add category"><PlusIcon /></button>
+                </div>
+              </header>
+              {!collapsed && (
+                <div className="group-categories">
+                  {categories.map((category) => (
+                    <CategoryRow
+                      key={category.id}
+                      state={state}
+                      category={category}
+                      onAssignmentChange={(amount) => onAssignmentChange(state.activeMonth, category.id, amount)}
+                      onEdit={() => onEditCategory(category)}
+                      onMove={() => onMove({ from: category.id })}
+                      onToggleSnooze={() => onToggleSnooze(category.id)}
+                    />
+                  ))}
+                  {categories.length === 0 && (
+                    <button className="empty-category" onClick={() => onAddCategory(group.id)}>
+                      <PlusIcon />Add a category to {group.name}
+                    </button>
+                  )}
+                </div>
+              )}
+            </section>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+const AccountsView = ({
+  state,
+  selectedAccountId,
+  onSelectAccount,
+  onNewAccount,
+  onEditAccount,
+  onNewTransaction,
+  onEditTransaction,
+}: {
+  state: BudgetState
+  selectedAccountId: string | undefined
+  onSelectAccount: (accountId: string | undefined) => void
+  onNewAccount: () => void
+  onEditAccount: (account: Account) => void
+  onNewTransaction: () => void
+  onEditTransaction: (transaction: Transaction) => void
+}) => {
+  const transactions = getRecentTransactions(state, selectedAccountId)
+  const categoryById = new Map(state.categories.map((category) => [category.id, category.name]))
+  const accountById = new Map(state.accounts.map((account) => [account.id, account.name]))
+
+  return (
+    <div className="view-shell">
+      <header className="accounts-header">
+        <div>
+          <span className="eyebrow">Money locations</span>
+          <h1>Accounts</h1>
+          <p>All accounts use the same simple model. No credit-card mode, tracking mode, or cleared state.</p>
+        </div>
+        <div className="header-actions">
+          <button className="secondary-button" onClick={onNewAccount}><PlusIcon />Account</button>
+          <button className="primary-button" onClick={onNewTransaction}><PlusIcon />Transaction</button>
+        </div>
+      </header>
+
+      <section className="account-overview">
+        <button className={`account-card total-card${selectedAccountId === undefined ? ' selected' : ''}`} onClick={() => onSelectAccount(undefined)}>
+          <span>All accounts</span>
+          <strong>{formatMoney(getBudgetBalance(state), state.currency)}</strong>
+          <small>{state.accounts.filter((account) => !account.closed).length} open accounts</small>
+        </button>
+        {state.accounts.map((account) => (
+          <button
+            className={`account-card${selectedAccountId === account.id ? ' selected' : ''}${account.closed ? ' closed' : ''}`}
+            onClick={() => onSelectAccount(account.id)}
+            onDoubleClick={() => onEditAccount(account)}
+            key={account.id}
+          >
+            <span>{account.name}</span>
+            <strong>{formatMoney(getAccountBalance(state, account.id), state.currency)}</strong>
+            <small>{account.closed ? 'Closed' : account.note || 'Open account'} · Double-click to edit</small>
+          </button>
+        ))}
+      </section>
+
+      <section className="transactions-panel">
+        <header>
+          <div>
+            <h2>{selectedAccountId ? accountById.get(selectedAccountId) : 'All transactions'}</h2>
+            <span>{transactions.length} transactions</span>
+          </div>
+          {selectedAccountId && (
+            <button className="secondary-button compact" onClick={() => {
+              const account = state.accounts.find((item) => item.id === selectedAccountId)
+              if (account) onEditAccount(account)
+            }}><EditIcon />Edit account</button>
+          )}
+        </header>
+        <div className="transaction-table-wrap">
+          <table className="transaction-table">
+            <thead><tr><th>Date</th><th>Payee</th><th>Category</th><th>Account</th><th>Amount</th><th /></tr></thead>
+            <tbody>
+              {transactions.map((transaction) => (
+                <tr key={transaction.id}>
+                  <td>{transaction.date}</td>
+                  <td><strong>{transaction.payee}</strong>{transaction.memo && <small>{transaction.memo}</small>}</td>
+                  <td>{transaction.categoryId ? categoryById.get(transaction.categoryId) ?? 'Archived category' : 'Ready to assign'}</td>
+                  <td>{accountById.get(transaction.accountId)}</td>
+                  <td className={transaction.amount < 0 ? 'negative-value' : 'good-value'}>{formatMoney(transaction.amount, state.currency)}</td>
+                  <td><button className="mini-action" onClick={() => onEditTransaction(transaction)} aria-label="Edit transaction"><EditIcon /></button></td>
+                </tr>
+              ))}
+              {transactions.length === 0 && <tr><td colSpan={6} className="empty-table">No transactions yet.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+const TransactionDialog = ({
+  state,
+  transaction,
+  selectedAccountId,
+  onClose,
+  onSubmit,
+  onDelete,
+}: {
+  state: BudgetState
+  transaction?: Transaction
+  selectedAccountId?: string
+  onClose: () => void
+  onSubmit: (transaction: Omit<Transaction, 'id'>) => void
+  onDelete?: () => void
+}) => {
+  const [kind, setKind] = useState<'expense' | 'income'>(transaction?.amount && transaction.amount > 0 ? 'income' : 'expense')
+  const [accountId, setAccountId] = useState(transaction?.accountId ?? selectedAccountId ?? state.accounts.find((account) => !account.closed)?.id ?? '')
+  const [date, setDate] = useState(transaction?.date ?? todayKey())
+  const [payee, setPayee] = useState(transaction?.payee ?? '')
+  const [categoryId, setCategoryId] = useState(transaction?.categoryId ?? state.categories.find((category) => !category.hidden)?.id ?? '')
+  const [amount, setAmount] = useState(transaction ? (Math.abs(transaction.amount) / 100).toFixed(2) : '')
+  const [memo, setMemo] = useState(transaction?.memo ?? '')
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    const parsed = Math.abs(parseMoney(amount))
+    if (!accountId || !payee.trim() || parsed <= 0) return
+    onSubmit({
+      accountId,
+      date,
+      payee: payee.trim(),
+      memo: memo.trim(),
+      categoryId: kind === 'income' ? null : categoryId || null,
+      amount: kind === 'income' ? parsed : -parsed,
+    })
+  }
+
+  return (
+    <DialogFrame title={transaction ? 'Edit transaction' : 'New transaction'} subtitle="Transactions immediately update account and category balances." onClose={onClose} wide>
+      <form onSubmit={submit}>
+        <div className="kind-toggle">
+          <button type="button" className={kind === 'expense' ? 'active' : ''} onClick={() => setKind('expense')}>Expense</button>
+          <button type="button" className={kind === 'income' ? 'active' : ''} onClick={() => setKind('income')}>Income</button>
+        </div>
+        <div className="form-grid">
+          <label>Account
+            <select value={accountId} onChange={(event) => setAccountId(event.target.value)} required>
+              {state.accounts.filter((account) => !account.closed || account.id === accountId).map((account) => <option value={account.id} key={account.id}>{account.name}</option>)}
+            </select>
+          </label>
+          <label>Date<input type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label>
+          <label className="span-two">Payee
+            <input value={payee} onChange={(event) => setPayee(event.target.value)} placeholder={kind === 'expense' ? 'Who did you pay?' : 'Where did it come from?'} autoFocus required />
+          </label>
+          {kind === 'expense' && (
+            <label className="span-two">Category
+              <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} required>
+                {state.groups.map((group) => (
+                  <optgroup label={group.name} key={group.id}>
+                    {state.categories.filter((category) => category.groupId === group.id && !category.hidden).map((category) => (
+                      <option value={category.id} key={category.id}>{category.name}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </label>
+          )}
+          <label>Amount<input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" required /></label>
+          <label>Memo <span className="optional">Optional</span><input value={memo} onChange={(event) => setMemo(event.target.value)} /></label>
+        </div>
+        <footer className="dialog-actions split-actions">
+          {onDelete ? <button type="button" className="danger-button" onClick={onDelete}>Delete</button> : <span />}
+          <div><button type="button" className="secondary-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button" disabled={state.accounts.length === 0}>{transaction ? 'Save changes' : 'Save transaction'}</button></div>
+        </footer>
+      </form>
+    </DialogFrame>
+  )
+}
+
+const CategoryDialog = ({
+  state,
+  initial,
+  groupId,
+  onClose,
+  onSubmit,
+  onArchive,
+}: {
+  state: BudgetState
+  initial?: Category
+  groupId: string
+  onClose: () => void
+  onSubmit: (category: Omit<Category, 'id'>) => void
+  onArchive?: () => void
+}) => {
+  const initialTarget = initial?.target
+  const initialSchedule = initialTarget?.schedule
+  const initialRepeat = initialTarget?.repeat
+  const fallbackTargetDate = initialTarget?.targetDate
+    ?? (initialTarget?.targetMonth ? monthEndDate(initialTarget.targetMonth) : monthEndDate(shiftMonth(state.activeMonth, 6)))
+
+  const [name, setName] = useState(initial?.name ?? '')
+  const [selectedGroupId, setSelectedGroupId] = useState(initial?.groupId ?? groupId)
+  const [targetType, setTargetType] = useState<CategoryTarget['type'] | 'none'>(initialTarget?.type ?? 'none')
+  const [targetAmount, setTargetAmount] = useState(initialTarget ? (initialTarget.amount / 100).toFixed(2) : '')
+  const [scheduleMode, setScheduleMode] = useState<'recurring' | 'custom'>(initialSchedule?.kind ?? 'recurring')
+  const [scheduleUnit, setScheduleUnit] = useState<'week' | 'month' | 'year'>(initialSchedule?.kind === 'recurring' ? initialSchedule.unit : 'month')
+  const [scheduleInterval, setScheduleInterval] = useState(initialSchedule?.kind === 'recurring' ? String(initialSchedule.interval) : '1')
+  const [anchorDate, setAnchorDate] = useState(initialSchedule?.kind === 'recurring' ? initialSchedule.anchorDate : `${state.activeMonth}-01`)
+  const [customScheduleDates, setCustomScheduleDates] = useState(initialSchedule?.kind === 'custom' ? initialSchedule.dates.join('\n') : '')
+  const [targetDate, setTargetDate] = useState(fallbackTargetDate)
+  const [repeatMode, setRepeatMode] = useState<'none' | 'recurring' | 'custom'>(initialRepeat?.kind ?? 'none')
+  const [repeatUnit, setRepeatUnit] = useState<'month' | 'year'>(initialRepeat?.kind === 'recurring' ? initialRepeat.unit : 'year')
+  const [repeatInterval, setRepeatInterval] = useState(initialRepeat?.kind === 'recurring' ? String(initialRepeat.interval) : '1')
+  const [customRepeatDates, setCustomRepeatDates] = useState(initialRepeat?.kind === 'custom' ? initialRepeat.dates.join('\n') : '')
+  const [note, setNote] = useState(initial?.note ?? '')
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    if (!name.trim()) return
+    const amount = Math.abs(parseMoney(targetAmount))
+    let target: CategoryTarget | undefined
+
+    if (targetType !== 'none' && amount > 0) {
+      if (targetType === 'by-date') {
+        const repeat = repeatMode === 'recurring'
+          ? { kind: 'recurring' as const, unit: repeatUnit, interval: Math.max(1, Number.parseInt(repeatInterval, 10) || 1) }
+          : repeatMode === 'custom'
+            ? { kind: 'custom' as const, dates: parseDateList(customRepeatDates).filter((date) => date !== targetDate) }
+            : undefined
+        target = {
+          type: targetType,
+          amount,
+          targetDate,
+          ...(repeat ? { repeat } : {}),
+          ...(initialTarget?.snoozedMonths ? { snoozedMonths: initialTarget.snoozedMonths } : {}),
+        }
+      } else {
+        const schedule = scheduleMode === 'custom'
+          ? { kind: 'custom' as const, dates: parseDateList(customScheduleDates) }
+          : {
+              kind: 'recurring' as const,
+              unit: scheduleUnit,
+              interval: Math.max(1, Number.parseInt(scheduleInterval, 10) || 1),
+              anchorDate,
+            }
+        target = {
+          type: targetType,
+          amount,
+          schedule,
+          ...(initialTarget?.snoozedMonths ? { snoozedMonths: initialTarget.snoozedMonths } : {}),
+        }
+      }
+    }
+
+    onSubmit({
+      groupId: selectedGroupId,
+      name: name.trim(),
+      note: note.trim(),
+      ...(target ? { target } : {}),
+    })
+  }
+
+  return (
+    <DialogFrame title={initial ? 'Edit category' : 'Add category'} subtitle="Targets produce a month-specific recommendation, not merely a lifetime goal total." onClose={onClose} wide>
+      <form onSubmit={submit}>
+        <div className="form-grid single-column">
+          <label>Category name<input value={name} onChange={(event) => setName(event.target.value)} autoFocus required /></label>
+          <label>Group
+            <select value={selectedGroupId} onChange={(event) => setSelectedGroupId(event.target.value)}>
+              {state.groups.filter((group) => !group.hidden).map((group) => <option value={group.id} key={group.id}>{group.name}</option>)}
+            </select>
+          </label>
+          <label>Target type
+            <select value={targetType} onChange={(event) => setTargetType(event.target.value as CategoryTarget['type'] | 'none')}>
+              <option value="none">No target</option>
+              <option value="monthly-savings">Set aside another amount on each due date</option>
+              <option value="monthly-spending">Refill the available balance on each due date</option>
+              <option value="by-date">Build a total balance by a deadline</option>
+            </select>
+          </label>
+
+          {targetType !== 'none' && (
+            <label>{targetType === 'by-date' ? 'Total target amount' : 'Amount per occurrence'}
+              <input inputMode="decimal" value={targetAmount} onChange={(event) => setTargetAmount(event.target.value)} placeholder="0.00" required />
+            </label>
+          )}
+
+          {targetType !== 'none' && targetType !== 'by-date' && (
+            <section className="target-schedule-box">
+              <div className="target-schedule-heading">
+                <strong>Schedule</strong>
+                <span>Every matching date contributes one occurrence to that month’s required amount.</span>
+              </div>
+              <label>Schedule style
+                <select value={scheduleMode} onChange={(event) => setScheduleMode(event.target.value as 'recurring' | 'custom')}>
+                  <option value="recurring">Repeat at a regular interval</option>
+                  <option value="custom">Use custom irregular dates</option>
+                </select>
+              </label>
+              {scheduleMode === 'recurring' ? (
+                <div className="target-inline-grid">
+                  <label>Every<input type="number" min="1" max="999" value={scheduleInterval} onChange={(event) => setScheduleInterval(event.target.value)} required /></label>
+                  <label>Period
+                    <select value={scheduleUnit} onChange={(event) => setScheduleUnit(event.target.value as 'week' | 'month' | 'year')}>
+                      <option value="week">Week(s)</option>
+                      <option value="month">Month(s)</option>
+                      <option value="year">Year(s)</option>
+                    </select>
+                  </label>
+                  <label>First due date<input type="date" value={anchorDate} onChange={(event) => setAnchorDate(event.target.value)} required /></label>
+                </div>
+              ) : (
+                <label>Custom dates
+                  <textarea value={customScheduleDates} onChange={(event) => setCustomScheduleDates(event.target.value)} placeholder={'2026-08-15\n2026-10-01\n2027-02-14'} rows={4} required />
+                  <small className="field-help">Enter one ISO date per line. Commas and spaces also work.</small>
+                </label>
+              )}
+            </section>
+          )}
+
+          {targetType === 'by-date' && (
+            <section className="target-schedule-box">
+              <div className="target-schedule-heading">
+                <strong>Deadline</strong>
+                <span>Rubies divides the remaining balance across the months still available.</span>
+              </div>
+              <label>First target date<input type="date" value={targetDate} onChange={(event) => setTargetDate(event.target.value)} required /></label>
+              <label>After this deadline
+                <select value={repeatMode} onChange={(event) => setRepeatMode(event.target.value as 'none' | 'recurring' | 'custom')}>
+                  <option value="none">Stop after this target</option>
+                  <option value="recurring">Repeat at a regular interval</option>
+                  <option value="custom">Use custom future deadlines</option>
+                </select>
+              </label>
+              {repeatMode === 'recurring' && (
+                <div className="target-inline-grid repeat-grid">
+                  <label>Repeat every<input type="number" min="1" max="999" value={repeatInterval} onChange={(event) => setRepeatInterval(event.target.value)} required /></label>
+                  <label>Period
+                    <select value={repeatUnit} onChange={(event) => setRepeatUnit(event.target.value as 'month' | 'year')}>
+                      <option value="month">Month(s)</option>
+                      <option value="year">Year(s)</option>
+                    </select>
+                  </label>
+                </div>
+              )}
+              {repeatMode === 'custom' && (
+                <label>Additional target dates
+                  <textarea value={customRepeatDates} onChange={(event) => setCustomRepeatDates(event.target.value)} placeholder={'2027-01-31\n2027-06-15\n2028-03-01'} rows={4} required />
+                </label>
+              )}
+            </section>
+          )}
+
+          <label>Notes <span className="optional">Optional</span>
+            <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} />
+          </label>
+        </div>
+        <footer className="dialog-actions split-actions">
+          {onArchive ? <button type="button" className="danger-button" onClick={() => { if (window.confirm('Archive this category? Existing history will be kept.')) onArchive() }}>Archive</button> : <span />}
+          <div><button type="button" className="secondary-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button">{initial ? 'Save category' : 'Add category'}</button></div>
+        </footer>
+      </form>
+    </DialogFrame>
+  )
+}
+
+const MoveMoneyDialog = ({
+  state,
+  readyToAssign,
+  preset,
+  onClose,
+  onMove,
+}: {
+  state: BudgetState
+  readyToAssign: number
+  preset: MovePreset
+  onClose: () => void
+  onMove: (from: string | null, to: string | null, amount: number) => void
+}) => {
+  const categories = state.categories.filter((category) => !category.hidden)
+  const [from, setFrom] = useState<string>(preset.from === null ? 'rta' : preset.from ?? 'rta')
+  const [to, setTo] = useState<string>(preset.to === null ? 'rta' : preset.to ?? categories.find((category) => category.id !== preset.from)?.id ?? 'rta')
+  const [amount, setAmount] = useState('')
+
+  const sourceId = from === 'rta' ? null : from
+  const destinationId = to === 'rta' ? null : to
+  const sourceCategory = sourceId ? categories.find((category) => category.id === sourceId) : undefined
+  const sourceAvailable = sourceCategory ? getCategorySummary(state, sourceCategory, state.activeMonth).available : readyToAssign
+  const parsed = Math.abs(parseMoney(amount))
+  const valid = parsed > 0 && sourceId !== destinationId && parsed <= Math.max(0, sourceAvailable)
+
+  const options = (
+    <>
+      <option value="rta">Ready to assign ({formatMoney(readyToAssign, state.currency)})</option>
+      {state.groups.map((group) => (
+        <optgroup label={group.name} key={group.id}>
+          {categories.filter((category) => category.groupId === group.id).map((category) => (
+            <option value={category.id} key={category.id}>
+              {category.name} ({formatMoney(getCategorySummary(state, category, state.activeMonth).available, state.currency)})
+            </option>
+          ))}
+        </optgroup>
+      ))}
+    </>
+  )
+
+  return (
+    <DialogFrame title="Move money" subtitle={`Reassign money in ${monthLabel(state.activeMonth)} without changing account balances.`} onClose={onClose}>
+      <form onSubmit={(event) => { event.preventDefault(); if (valid) onMove(sourceId, destinationId, parsed) }}>
+        <div className="move-flow">
+          <label>From<select value={from} onChange={(event) => setFrom(event.target.value)}>{options}</select></label>
+          <span className="move-arrow">→</span>
+          <label>To<select value={to} onChange={(event) => setTo(event.target.value)}>{options}</select></label>
+        </div>
+        <label className="standalone-label">Amount<input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" autoFocus /></label>
+        <div className="source-balance">Available to move: <strong>{formatMoney(Math.max(0, sourceAvailable), state.currency)}</strong></div>
+        {parsed > sourceAvailable && <div className="form-error">That source does not have enough available money.</div>}
+        <footer className="dialog-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button" disabled={!valid}>Move money</button></footer>
+      </form>
+    </DialogFrame>
+  )
+}
+
+const GroupDialog = ({ initialName, onClose, onSubmit }: { initialName: string; onClose: () => void; onSubmit: (name: string) => void }) => {
+  const [name, setName] = useState(initialName)
+  return (
+    <DialogFrame title={initialName ? 'Rename group' : 'New category group'} onClose={onClose}>
+      <form onSubmit={(event) => { event.preventDefault(); if (name.trim()) onSubmit(name.trim()) }}>
+        <div className="form-grid single-column"><label>Group name<input value={name} onChange={(event) => setName(event.target.value)} autoFocus required /></label></div>
+        <footer className="dialog-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" type="submit">Save group</button></footer>
+      </form>
+    </DialogFrame>
+  )
+}
+
+const AccountDialog = ({
+  initial,
+  onClose,
+  onSubmit,
+}: {
+  initial?: Account
+  onClose: () => void
+  onSubmit: (account: Omit<Account, 'id'>, openingBalance: number) => void
+}) => {
+  const [name, setName] = useState(initial?.name ?? '')
+  const [note, setNote] = useState(initial?.note ?? '')
+  const [closed, setClosed] = useState(initial?.closed ?? false)
+  const [openingBalance, setOpeningBalance] = useState('')
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    if (!name.trim()) return
+    onSubmit(
+      {
+        name: name.trim(),
+        ...(note.trim() ? { note: note.trim() } : {}),
+        ...(closed ? { closed: true } : {}),
+      },
+      parseMoney(openingBalance),
+    )
+  }
+
+  return (
+    <DialogFrame title={initial ? 'Edit account' : 'Add account'} subtitle="Every account behaves the same way in Rubies." onClose={onClose}>
+      <form onSubmit={submit}>
+        <div className="form-grid single-column">
+          <label>Account name<input value={name} onChange={(event) => setName(event.target.value)} autoFocus required /></label>
+          <label>Note <span className="optional">Optional</span><input value={note} onChange={(event) => setNote(event.target.value)} /></label>
+          {!initial && <label>Current balance<input inputMode="decimal" value={openingBalance} onChange={(event) => setOpeningBalance(event.target.value)} placeholder="0.00" /></label>}
+          {initial && <label className="checkbox-label"><input type="checkbox" checked={closed} onChange={(event) => setClosed(event.target.checked)} />Close this account</label>}
+        </div>
+        <footer className="dialog-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" type="submit">{initial ? 'Save account' : 'Add account'}</button></footer>
+      </form>
+    </DialogFrame>
+  )
+}
+
+const SettingsDialog = ({
+  state,
+  mode,
+  onClose,
+  onExport,
+  onImport,
+  onChangePassword,
+  onResetDemo,
+  onLock,
+}: {
+  state: BudgetState
+  mode: Session['mode']
+  onClose: () => void
+  onExport: () => void
+  onImport: () => void
+  onChangePassword: (password: string) => Promise<void>
+  onResetDemo: () => void
+  onLock: () => void
+}) => {
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [message, setMessage] = useState('')
+
+  const change = async (event: FormEvent) => {
+    event.preventDefault()
+    if (password.length < 8) {
+      setMessage('Use at least 8 characters.')
+      return
+    }
+    if (password !== confirm) {
+      setMessage('The passwords do not match.')
+      return
+    }
+    await onChangePassword(password)
+    setPassword('')
+    setConfirm('')
+    setMessage('Password changed and vault re-encrypted.')
+  }
+
+  return (
+    <DialogFrame title="Settings & data" subtitle="Import nYNAB exports, back up Rubies, and manage local protection." onClose={onClose} wide>
+      <div className="settings-body">
+        <section className="settings-section">
+          <h3>Data ownership</h3>
+          <p>Rubies imports its own JSON exports and nYNAB API-style plan exports. Importing replaces the current budget after confirmation.</p>
+          <div className="settings-actions">
+            <button className="secondary-button" onClick={onExport}><DownloadIcon />Export Rubies JSON</button>
+            <button className="primary-button" onClick={onImport}><UploadIcon />Import Rubies or nYNAB JSON</button>
+            {mode === 'demo' && <button className="secondary-button" onClick={onResetDemo}>Reset demo data</button>}
+            <button className="secondary-button" onClick={onLock}><LockIcon />{mode === 'demo' ? 'Exit demo' : 'Lock now'}</button>
+          </div>
+          {state.importSource?.kind === 'nynab' && (
+            <div className="import-source-note">
+              Imported from <strong>{state.importSource.sourceName}</strong> on {new Date(state.importSource.importedAt).toLocaleString()}.
+            </div>
+          )}
+        </section>
+
+        {mode === 'protected' && (
+          <section className="settings-section">
+            <h3>Change password</h3>
+            <p>This re-encrypts the current budget. Rubies cannot recover a forgotten password.</p>
+            <form onSubmit={change} className="password-change">
+              <label>New password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" /></label>
+              <label>Confirm password<input type="password" value={confirm} onChange={(event) => setConfirm(event.target.value)} autoComplete="new-password" /></label>
+              {message && <div className={message.startsWith('Password changed') ? 'form-success' : 'form-error'}>{message}</div>}
+              <button className="primary-button" type="submit">Change password</button>
+            </form>
+          </section>
+        )}
+
+        <section className="settings-section">
+          <h3>Budget summary</h3>
+          <dl className="summary-list">
+            <div><dt>Budget</dt><dd>{state.name}</dd></div>
+            <div><dt>Accounts</dt><dd>{state.accounts.length}</dd></div>
+            <div><dt>Categories</dt><dd>{state.categories.length}</dd></div>
+            <div><dt>Transactions</dt><dd>{state.transactions.length}</dd></div>
+            <div><dt>Months</dt><dd>{Object.keys(state.months).length}</dd></div>
+            <div><dt>Version</dt><dd>{APP_VERSION}</dd></div>
+          </dl>
+        </section>
+      </div>
+    </DialogFrame>
+  )
+}
+
+const BudgetWorkspace = ({
+  session,
+  onCloseSession,
+  onUpdateSession,
+}: {
+  session: Session
+  onCloseSession: () => void
+  onUpdateSession: (session: Session) => void
+}) => {
+  const persist = useCallback(
+    async (state: BudgetState) => {
+      if (session.mode === 'protected') await saveVault(state, session.password)
+    },
+    [session],
+  )
+
+  const [state, actions, saveStatus] = useBudgetStore(session.state, session.mode === 'protected' ? persist : undefined)
+  const [view, setView] = useState<View>('plan')
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [categoryDialog, setCategoryDialog] = useState<CategoryDialogState>(null)
+  const [transactionDialog, setTransactionDialog] = useState<TransactionDialogState>(null)
+  const [accountDialog, setAccountDialog] = useState<Account | 'new' | null>(null)
+  const [movePreset, setMovePreset] = useState<MovePreset | null>(null)
+  const [groupDialog, setGroupDialog] = useState<{ id?: string; name: string } | null>(null)
+  const [selectedAccountId, setSelectedAccountId] = useState<string | undefined>()
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null)
+  const importInputRef = useRef<HTMLInputElement>(null)
+
+  const readyToAssign = useMemo(() => getReadyToAssign(state, state.activeMonth), [state])
+  const budgetBalance = useMemo(() => getBudgetBalance(state), [state])
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      event.preventDefault()
+      setInstallPrompt(event as BeforeInstallPromptEvent)
+    }
+    window.addEventListener('beforeinstallprompt', handler)
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
+
+  useEffect(() => {
+    const keyHandler = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target?.matches('input, textarea, select')) return
+      if (event.key.toLowerCase() === 'p') setView('plan')
+      if (event.key.toLowerCase() === 'a') setView('accounts')
+      if (event.key.toLowerCase() === 'n') setTransactionDialog({})
+      if (event.key.toLowerCase() === 'm') setMovePreset({})
+      if (event.key.toLowerCase() === 't') actions.setActiveMonth(currentMonthKey())
+    }
+    window.addEventListener('keydown', keyHandler)
+    return () => window.removeEventListener('keydown', keyHandler)
+  }, [actions])
+
+  useEffect(() => {
+    if (session.mode !== 'protected') return
+    let timeout = window.setTimeout(onCloseSession, 15 * 60 * 1000)
+    const reset = () => {
+      window.clearTimeout(timeout)
+      timeout = window.setTimeout(onCloseSession, 15 * 60 * 1000)
+    }
+    const events = ['pointerdown', 'keydown', 'touchstart']
+    events.forEach((event) => window.addEventListener(event, reset, { passive: true }))
+    return () => {
+      window.clearTimeout(timeout)
+      events.forEach((event) => window.removeEventListener(event, reset))
+    }
+  }, [session.mode, onCloseSession])
+
+  const toggleGroup = (groupId: string) => {
+    setCollapsedGroups((current) => {
+      const next = new Set(current)
+      if (next.has(groupId)) next.delete(groupId)
+      else next.add(groupId)
+      return next
+    })
+  }
+
+  const exportData = () => {
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `rubies-${state.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${todayKey()}.json`
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const importData = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+
+    try {
+      const result = parseImportedBudget(JSON.parse(await file.text()))
+      const warningText = result.warnings.length ? `\n\nWarnings:\n${result.warnings.join('\n')}` : ''
+      if (!window.confirm(`${result.summary}${warningText}\n\nReplace the current budget with this import?`)) return
+      actions.importState(result.state)
+      onUpdateSession(session.mode === 'protected'
+        ? { mode: 'protected', state: result.state, password: session.password }
+        : { mode: 'demo', state: result.state })
+      setSettingsOpen(false)
+      window.alert(`${result.summary}${warningText}`)
+    } catch (reason) {
+      window.alert(reason instanceof Error ? reason.message : 'Could not import this JSON file.')
+    }
+  }
+
+  const changePassword = async (password: string) => {
+    if (session.mode !== 'protected') return
+    await saveVault(state, password)
+    onUpdateSession({ mode: 'protected', state, password })
+  }
+
+  const install = async () => {
+    if (!installPrompt) return
+    await installPrompt.prompt()
+    await installPrompt.userChoice
+    setInstallPrompt(null)
+  }
+
+  return (
+    <div className="app-shell">
+      <aside className="sidebar">
+        <div className="sidebar-brand"><RubyMark /><div><strong>Rubies</strong><span>{APP_VERSION}</span></div></div>
+        <nav className="main-nav">
+          <button className={view === 'plan' ? 'active' : ''} onClick={() => setView('plan')}><PlanIcon /><span>Plan</span><kbd>P</kbd></button>
+          <button className={view === 'accounts' ? 'active' : ''} onClick={() => setView('accounts')}><AccountIcon /><span>Accounts</span><kbd>A</kbd></button>
+        </nav>
+
+        <div className="sidebar-section">
+          <div className="section-heading"><span>Accounts</span><button className="tiny-add" onClick={() => setAccountDialog('new')}>+</button></div>
+          <button className="sidebar-account all" onClick={() => { setView('accounts'); setSelectedAccountId(undefined) }}>
+            <span>All money</span><strong>{formatMoney(budgetBalance, state.currency)}</strong>
+          </button>
+          {state.accounts.filter((account) => !account.closed).map((account) => (
+            <button className="sidebar-account" key={account.id} onClick={() => { setView('accounts'); setSelectedAccountId(account.id) }}>
+              <span>{account.name}</span><strong>{formatMoney(getAccountBalance(state, account.id), state.currency)}</strong>
+            </button>
+          ))}
+          {state.accounts.length === 0 && <button className="empty-account-link" onClick={() => setAccountDialog('new')}>+ Add your first account</button>}
+        </div>
+
         <div className="sidebar-footer">
-          {installPrompt && <button onClick={install}><InstallIcon /><span>Install Rubies</span></button>}
-          <button onClick={() => setSettingsOpen(true)}><SettingsIcon /><span>Settings & data</span></button>
-          <button onClick={onLock}><LockIcon /><span>{session.mode === 'demo' ? 'Exit demo' : 'Lock budget'}</span></button>
-          <span className={`save-status ${saveStatus}`}>{session.mode === 'demo' ? 'Temporary session' : saveStatus === 'saving' ? 'Encrypting changes…' : saveStatus === 'error' ? 'Could not save' : 'Encrypted locally'}</span>
+          {installPrompt && <button onClick={install}><DownloadIcon /><span>Install app</span></button>}
+          <button onClick={() => setSettingsOpen(true)}><SettingsIcon /><span>Settings</span></button>
+          <div className={`save-status ${saveStatus}`}>
+            <span />
+            {session.mode === 'demo' ? 'Demo changes are temporary' : saveStatus === 'saving' ? 'Encrypting…' : saveStatus === 'error' ? 'Save failed' : 'Encrypted locally'}
+          </div>
         </div>
       </aside>
 
-      <main className="workspace">
-        {view === 'plan' ? <PlanView state={state} readyToAssign={readyToAssign} collapsedGroups={collapsedGroups} onToggleGroup={toggleGroup} onMonthChange={actions.setActiveMonth} onAssignmentChange={actions.setAssignment} onEditCategory={(category) => setCategoryDialog({ mode: 'edit', category })} onAddCategory={(groupId) => setCategoryDialog({ mode: 'create', groupId })} onEditGroup={setGroupDialogId} onNewGroup={() => setGroupDialogId('new')} onNewTransaction={() => setTransactionDialog({})} onMoveMoney={(preset) => setMoveOpen(preset)} onFundTarget={(category) => { const summary = getCategorySummary(state, category, state.activeMonth); const amount = Math.min(Math.max(0, readyToAssign), summary.target?.needed ?? 0); actions.moveMoney(state.activeMonth, null, category.id, amount); }} onAutoAssign={() => actions.autoAssignTargets(state.activeMonth)}/> : <AccountsView state={state} selectedAccountId={selectedAccountId} onSelectAccount={setSelectedAccountId} onNewTransaction={() => setTransactionDialog({})} onEditTransaction={(transaction) => setTransactionDialog({ transaction })} onAddAccount={() => setAccountDialog('new')} onEditAccount={(account) => setAccountDialog(account)}/>}
+      <main className="main-content">
+        {view === 'plan' ? (
+          <PlanView
+            state={state}
+            readyToAssign={readyToAssign}
+            collapsedGroups={collapsedGroups}
+            onToggleGroup={toggleGroup}
+            onMonthChange={actions.setActiveMonth}
+            onAssignmentChange={actions.setAssignment}
+            onEditCategory={(category) => setCategoryDialog({ mode: 'edit', category })}
+            onAddCategory={(groupId) => setCategoryDialog({ mode: 'create', groupId })}
+            onEditGroup={(id, name) => setGroupDialog({ id, name })}
+            onNewGroup={() => setGroupDialog({ name: '' })}
+            onNewTransaction={() => setTransactionDialog({})}
+            onMove={(preset = {}) => setMovePreset(preset)}
+            onAutoAssign={() => actions.autoAssignTargets(state.activeMonth)}
+            onToggleSnooze={(categoryId) => actions.toggleTargetSnooze(state.activeMonth, categoryId)}
+          />
+        ) : (
+          <AccountsView
+            state={state}
+            selectedAccountId={selectedAccountId}
+            onSelectAccount={setSelectedAccountId}
+            onNewAccount={() => setAccountDialog('new')}
+            onEditAccount={(account) => setAccountDialog(account)}
+            onNewTransaction={() => setTransactionDialog({})}
+            onEditTransaction={(transaction) => setTransactionDialog({ transaction })}
+          />
+        )}
       </main>
 
-      <nav className="mobile-nav" aria-label="Mobile navigation">
+      <nav className="mobile-nav">
         <button className={view === 'plan' ? 'active' : ''} onClick={() => setView('plan')}><PlanIcon /><span>Plan</span></button>
-        <button className={view === 'accounts' ? 'active' : ''} onClick={() => selectAccount(undefined)}><AccountIcon /><span>Accounts</span></button>
+        <button className={view === 'accounts' ? 'active' : ''} onClick={() => setView('accounts')}><AccountIcon /><span>Accounts</span></button>
         <button className="mobile-add" onClick={() => setTransactionDialog({})}><PlusIcon /><span>New</span></button>
         <button onClick={() => setSettingsOpen(true)}><SettingsIcon /><span>More</span></button>
       </nav>
 
-      {transactionDialog && <TransactionDialog state={state} transaction={transactionDialog.transaction} selectedAccountId={selectedAccountId} onClose={() => setTransactionDialog(null)} onSubmit={(transaction) => { transactionDialog.transaction ? actions.updateTransaction(transactionDialog.transaction.id, transaction) : actions.addTransaction(transaction); setTransactionDialog(null); }} onDelete={transactionDialog.transaction ? () => { if (window.confirm('Delete this transaction?')) {
-        actions.deleteTransaction(transactionDialog.transaction!.id);
-        setTransactionDialog(null);
-    } } : undefined}/>}
-      {categoryDialog && <CategoryDialog state={state} initial={categoryDialog.mode === 'edit' ? categoryDialog.category : undefined} groupId={categoryDialog.mode === 'create' ? categoryDialog.groupId : categoryDialog.category.groupId} onClose={() => setCategoryDialog(null)} onSubmit={(category) => { categoryDialog.mode === 'edit' ? actions.updateCategory(categoryDialog.category.id, category) : actions.addCategory(category); setCategoryDialog(null); }} onArchive={categoryDialog.mode === 'edit' ? () => { const available = getCategorySummary(state, categoryDialog.category, state.activeMonth).available; if (available !== 0) {
-        window.alert(`Move ${formatMoney(available, state.currency)} out of this category before archiving it.`);
-        return;
-    } actions.archiveCategory(categoryDialog.category.id); setCategoryDialog(null); } : undefined}/>}
-      {moveOpen && <MoveMoneyDialog state={state} readyToAssign={readyToAssign} preset={moveOpen} onClose={() => setMoveOpen(null)} onMove={(from, to, amount) => { actions.moveMoney(state.activeMonth, from, to, amount); setMoveOpen(null); }}/>}
-      {groupDialogId && <GroupDialog initialName={groupDialogId === 'new' ? '' : state.groups.find((group) => group.id === groupDialogId)?.name ?? ''} onClose={() => setGroupDialogId(null)} onSubmit={(name) => { groupDialogId === 'new' ? actions.addGroup(name) : actions.updateGroup(groupDialogId, { name }); setGroupDialogId(null); }}/>}
-      {accountDialog && <AccountDialog initial={accountDialog === 'new' ? undefined : accountDialog} onClose={() => setAccountDialog(null)} onSubmit={(account, openingBalance) => { accountDialog === 'new' ? actions.addAccount(account, openingBalance) : actions.updateAccount(accountDialog.id, account); setAccountDialog(null); }}/>}
-      {settingsOpen && <SettingsDialog state={state} mode={session.mode} onClose={() => setSettingsOpen(false)} onExport={exportData} onImport={() => importInputRef.current?.click()} onChangePassword={changePassword} onResetDemo={() => actions.replaceState(createDemoState())} onLock={onLock}/>}
-      <input ref={importInputRef} type="file" accept="application/json" hidden onChange={importData}/>
-    </div>);
-};
-const PlanView = ({ state, readyToAssign, collapsedGroups, onToggleGroup, onMonthChange, onAssignmentChange, onEditCategory, onAddCategory, onEditGroup, onNewGroup, onNewTransaction, onMoveMoney, onFundTarget, onAutoAssign }: {
-    state: BudgetState;
-    readyToAssign: number;
-    collapsedGroups: Set<string>;
-    onToggleGroup: (groupId: string) => void;
-    onMonthChange: (month: string) => void;
-    onAssignmentChange: (month: string, categoryId: string, amount: number) => void;
-    onEditCategory: (category: Category) => void;
-    onAddCategory: (groupId: string) => void;
-    onEditGroup: (groupId: string) => void;
-    onNewGroup: () => void;
-    onNewTransaction: () => void;
-    onMoveMoney: (preset: {
-        from?: string | null;
-        to?: string | null;
-    }) => void;
-    onFundTarget: (category: Category) => void;
-    onAutoAssign: () => void;
-}) => {
-    const visibleCategories = state.categories.filter((category) => !category.hidden);
-    const summaries = visibleCategories.map((category) => getCategorySummary(state, category, state.activeMonth));
-    const totalAssigned = summaries.reduce((sum, item) => sum + item.assigned, 0);
-    const totalActivity = summaries.reduce((sum, item) => sum + item.activity, 0);
-    const totalAvailable = summaries.reduce((sum, item) => sum + item.available, 0);
-    const totalNeeded = summaries.reduce((sum, item) => sum + (item.target?.needed ?? 0), 0);
-    return <>
-    <header className="workspace-header"><div><span className="eyebrow">Zero-based plan</span><div className="month-switcher"><button aria-label="Previous month" onClick={() => onMonthChange(shiftMonth(state.activeMonth, -1))}><ChevronIcon direction="left"/></button><h1>{monthLabel(state.activeMonth)}</h1><button aria-label="Next month" onClick={() => onMonthChange(shiftMonth(state.activeMonth, 1))}><ChevronIcon direction="right"/></button></div><p>{formatMoney(totalNeeded, state.currency)} still needed to meet this month’s targets.</p></div><button className={`ready-card ${readyToAssign < 0 ? 'negative' : ''}`} onClick={() => onMoveMoney({ from: null })}><span>Ready to assign</span><strong>{formatMoney(readyToAssign, state.currency)}</strong><small>{readyToAssign === 0 ? 'Every available dollar has a job.' : readyToAssign > 0 ? 'Click to assign this money.' : 'Move money back to cover the gap.'}</small></button></header>
-    <div className="toolbar"><div className="toolbar-cluster"><button className="primary-button" onClick={onNewTransaction}><PlusIcon />New transaction <kbd>N</kbd></button><button className="secondary-button" onClick={() => onMoveMoney({})}><MoveIcon />Move money <kbd>M</kbd></button><button className="secondary-button" onClick={onAutoAssign} disabled={readyToAssign <= 0 || totalNeeded <= 0}><TargetIcon />Auto-assign targets</button></div><button className="text-button" onClick={onNewGroup}>+ New group</button></div>
-    <section className="budget-panel">
-      <div className="budget-grid budget-grid-header"><div>Category & target</div><div>Assigned</div><div>Activity</div><div>Available</div></div>
-      {state.groups.filter((group) => !group.hidden).map((group) => {
-            const categories = visibleCategories.filter((category) => category.groupId === group.id);
-            const collapsed = collapsedGroups.has(group.id);
-            return <div className="category-group" key={group.id}><div className="group-row"><button className="group-name" onClick={() => onToggleGroup(group.id)}><span className={`collapse-chevron ${collapsed ? 'collapsed' : ''}`}>⌄</span><strong>{group.name}</strong><small>{categories.length}</small></button><div className="group-actions"><button onClick={() => onEditGroup(group.id)}><EditIcon /> Rename</button><button onClick={() => onAddCategory(group.id)}><PlusIcon /> Add category</button></div></div>{!collapsed && categories.map((category) => { const summary = getCategorySummary(state, category, state.activeMonth); return <div className="budget-grid category-row" key={category.id}><div className="category-cell"><StatusDot status={summary.status}/><div className="category-details"><button className="category-name-button" onClick={() => onEditCategory(category)}><strong>{category.name}</strong><EditIcon /></button>{summary.target ? <><small>{summary.target.label}</small><div className="target-track"><span style={{ width: `${Math.round(summary.target.progress * 100)}%` }}/></div></> : <small className="no-target">No target · click name to add one</small>}</div>{summary.target && summary.target.needed > 0 && readyToAssign > 0 && <button className="fund-button" onClick={() => onFundTarget(category)}>Fund {formatMoney(Math.min(summary.target.needed, readyToAssign), state.currency)}</button>}</div><div><MoneyInput value={summary.assigned} ariaLabel={`Assigned to ${category.name}`} onCommit={(amount) => onAssignmentChange(state.activeMonth, category.id, amount)}/></div><div className={summary.activity < 0 ? 'negative-money' : ''}>{formatMoney(summary.activity, state.currency)}</div><div><button className={`available-pill ${summary.status}`} onClick={() => onMoveMoney({ from: category.id })}>{formatMoney(summary.available, state.currency)}</button></div></div>; })}</div>;
-        })}
-      <div className="budget-grid totals-row"><div>Plan totals</div><div>{formatMoney(totalAssigned, state.currency)}</div><div>{formatMoney(totalActivity, state.currency)}</div><div>{formatMoney(totalAvailable, state.currency)}</div></div>
-    </section>
-  </>;
-};
-const AccountsView = ({ state, selectedAccountId, onSelectAccount, onNewTransaction, onEditTransaction, onAddAccount, onEditAccount }: {
-    state: BudgetState;
-    selectedAccountId?: string;
-    onSelectAccount: (accountId?: string) => void;
-    onNewTransaction: () => void;
-    onEditTransaction: (transaction: Transaction) => void;
-    onAddAccount: () => void;
-    onEditAccount: (account: Account) => void;
-}) => {
-    const selectedAccount = state.accounts.find((account) => account.id === selectedAccountId);
-    const transactions = getRecentTransactions(state, selectedAccountId);
-    return <><header className="workspace-header accounts-header"><div><span className="eyebrow">Account register</span><div className="title-with-action"><h1>{selectedAccount?.name ?? 'All accounts'}</h1>{selectedAccount && <button className="icon-button" onClick={() => onEditAccount(selectedAccount)} aria-label="Edit account"><EditIcon /></button>}</div><p>{selectedAccount ? formatMoney(getAccountBalance(state, selectedAccount.id), state.currency) : `${state.accounts.length} account${state.accounts.length === 1 ? '' : 's'} · ${formatMoney(getBudgetBalance(state), state.currency)} on budget`}</p></div><div className="toolbar-cluster"><button className="secondary-button" onClick={onAddAccount}><PlusIcon />Add account</button><button className="primary-button" onClick={onNewTransaction}><PlusIcon />New transaction <kbd>N</kbd></button></div></header><div className="account-chips" aria-label="Account filter"><button className={!selectedAccountId ? 'active' : ''} onClick={() => onSelectAccount(undefined)}>All</button>{state.accounts.filter((account) => !account.closed).map((account) => <button key={account.id} className={selectedAccountId === account.id ? 'active' : ''} onClick={() => onSelectAccount(account.id)}>{account.name}</button>)}</div><section className="register-panel">{transactions.length === 0 ? <div className="empty-state"><RubyMark /><h3>No transactions yet</h3><p>Add an account opening balance, inflow, or expense to begin the register.</p><div className="toolbar-cluster"><button className="secondary-button" onClick={onAddAccount}>Add account</button><button className="primary-button" onClick={onNewTransaction} disabled={state.accounts.length === 0}>Add transaction</button></div></div> : <div className="transaction-list">{transactions.map((transaction) => { const account = state.accounts.find((item) => item.id === transaction.accountId); const category = state.categories.find((item) => item.id === transaction.categoryId); return <button className="transaction-row" key={transaction.id} onClick={() => onEditTransaction(transaction)}><div className={`transaction-icon ${transaction.amount >= 0 ? 'inflow' : 'outflow'}`}>{transaction.amount >= 0 ? '↙' : '↗'}</div><div className="transaction-main"><strong>{transaction.payee}</strong><span>{category?.name ?? 'Ready to assign'} · {account?.name}</span>{transaction.memo && <small>{transaction.memo}</small>}</div><time>{new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date(`${transaction.date}T12:00:00`))}</time><div className={`transaction-amount ${transaction.amount >= 0 ? 'positive' : ''}`}>{formatMoney(transaction.amount, state.currency)}<small>{transaction.cleared ? 'Cleared' : 'Uncleared'} · Edit</small></div></button>; })}</div>}</section></>;
-};
-const TransactionDialog = ({ state, transaction, selectedAccountId, onClose, onSubmit, onDelete }: {
-    state: BudgetState;
-    transaction?: Transaction;
-    selectedAccountId?: string;
-    onClose: () => void;
-    onSubmit: (transaction: Omit<Transaction, 'id'>) => void;
-    onDelete?: () => void;
-}) => {
-    const initialKind = transaction?.amount && transaction.amount >= 0 ? 'income' : 'expense';
-    const [kind, setKind] = useState<'expense' | 'income'>(initialKind);
-    const [accountId, setAccountId] = useState(transaction?.accountId ?? selectedAccountId ?? state.accounts[0]?.id ?? '');
-    const [categoryId, setCategoryId] = useState(transaction?.categoryId ?? state.categories.find((category) => !category.hidden)?.id ?? '');
-    const [date, setDate] = useState(transaction?.date ?? new Date().toISOString().slice(0, 10));
-    const [payee, setPayee] = useState(transaction?.payee ?? '');
-    const [memo, setMemo] = useState(transaction?.memo ?? '');
-    const [amount, setAmount] = useState(transaction ? (Math.abs(transaction.amount) / 100).toFixed(2) : '');
-    const [cleared, setCleared] = useState(transaction?.cleared ?? false);
-    const submit = (event: FormEvent) => { event.preventDefault(); const parsed = Math.abs(parseMoney(amount)); if (!accountId || !payee.trim() || parsed === 0)
-        return; onSubmit({ accountId, date, payee: payee.trim(), memo: memo.trim(), categoryId: kind === 'income' ? null : categoryId, amount: kind === 'income' ? parsed : -parsed, cleared }); };
-    return <DialogFrame title={transaction ? 'Edit transaction' : 'New transaction'} subtitle="Record money exactly where it moved." onClose={onClose}><form onSubmit={submit}><div className="segmented-control"><button type="button" className={kind === 'expense' ? 'active' : ''} onClick={() => setKind('expense')}>Expense</button><button type="button" className={kind === 'income' ? 'active' : ''} onClick={() => setKind('income')}>Income</button></div>{state.accounts.length === 0 && <div className="form-warning">Add an account before recording transactions.</div>}<div className="form-grid"><label>Account<select value={accountId} onChange={(event) => setAccountId(event.target.value)} required>{state.accounts.filter((account) => !account.closed).map((account) => <option value={account.id} key={account.id}>{account.name}</option>)}</select></label><label>Date<input type="date" value={date} onChange={(event) => setDate(event.target.value)} required/></label><label className="span-two">Payee<input value={payee} onChange={(event) => setPayee(event.target.value)} placeholder={kind === 'expense' ? 'Who did you pay?' : 'Where did it come from?'} autoFocus required/></label>{kind === 'expense' && <label className="span-two">Category<select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} required>{state.groups.map((group) => <optgroup label={group.name} key={group.id}>{state.categories.filter((category) => category.groupId === group.id && !category.hidden).map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</optgroup>)}</select></label>}<label>Amount<input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" required/></label><label>Status<select value={cleared ? 'cleared' : 'uncleared'} onChange={(event) => setCleared(event.target.value === 'cleared')}><option value="uncleared">Uncleared</option><option value="cleared">Cleared</option></select></label><label className="span-two">Memo <span className="optional">Optional</span><input value={memo} onChange={(event) => setMemo(event.target.value)} placeholder="A useful note for future you"/></label></div><footer className="dialog-actions split-actions">{onDelete ? <button type="button" className="danger-button" onClick={onDelete}>Delete</button> : <span />}<div><button type="button" className="secondary-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button" disabled={state.accounts.length === 0}>{transaction ? 'Save changes' : 'Save transaction'}</button></div></footer></form></DialogFrame>;
-};
-const CategoryDialog = ({ state, initial, groupId, onClose, onSubmit, onArchive }: {
-    state: BudgetState;
-    initial?: Category;
-    groupId: string;
-    onClose: () => void;
-    onSubmit: (category: Omit<Category, 'id'>) => void;
-    onArchive?: () => void;
-}) => {
-    const initialTarget = initial?.target;
-    const initialSchedule = initialTarget?.schedule;
-    const initialRepeat = initialTarget?.repeat;
-    const fallbackTargetDate = initialTarget?.targetDate ?? (initialTarget?.targetMonth ? monthEndDate(initialTarget.targetMonth) : monthEndDate(shiftMonth(state.activeMonth, 6)));
-    const [name, setName] = useState(initial?.name ?? '');
-    const [selectedGroupId, setSelectedGroupId] = useState(initial?.groupId ?? groupId);
-    const [targetType, setTargetType] = useState<CategoryTarget['type'] | 'none'>(initialTarget?.type ?? 'none');
-    const [targetAmount, setTargetAmount] = useState(initialTarget ? (initialTarget.amount / 100).toFixed(2) : '');
-    const [scheduleMode, setScheduleMode] = useState<'recurring' | 'custom'>(initialSchedule?.kind ?? 'recurring');
-    const [scheduleUnit, setScheduleUnit] = useState<'week' | 'month' | 'year'>(initialSchedule?.kind === 'recurring' ? initialSchedule.unit : 'month');
-    const [scheduleInterval, setScheduleInterval] = useState(initialSchedule?.kind === 'recurring' ? String(initialSchedule.interval) : '1');
-    const [anchorDate, setAnchorDate] = useState(initialSchedule?.kind === 'recurring' ? initialSchedule.anchorDate : `${state.activeMonth}-01`);
-    const [customScheduleDates, setCustomScheduleDates] = useState(initialSchedule?.kind === 'custom' ? initialSchedule.dates.join('\n') : '');
-    const [targetDate, setTargetDate] = useState(fallbackTargetDate);
-    const [repeatMode, setRepeatMode] = useState<'none' | 'recurring' | 'custom'>(initialRepeat?.kind ?? 'none');
-    const [repeatUnit, setRepeatUnit] = useState<'month' | 'year'>(initialRepeat?.kind === 'recurring' ? initialRepeat.unit : 'year');
-    const [repeatInterval, setRepeatInterval] = useState(initialRepeat?.kind === 'recurring' ? String(initialRepeat.interval) : '1');
-    const [customRepeatDates, setCustomRepeatDates] = useState(initialRepeat?.kind === 'custom' ? initialRepeat.dates.join('\n') : '');
-    const [note, setNote] = useState(initial?.note ?? '');
-    const submit = (event: FormEvent) => {
-        event.preventDefault();
-        if (!name.trim())
-            return;
-        const amount = Math.abs(parseMoney(targetAmount));
-        let target: CategoryTarget | undefined;
-        if (targetType !== 'none' && amount > 0) {
-            if (targetType === 'by-date') {
-                const repeat = repeatMode === 'recurring'
-                    ? { kind: 'recurring' as const, unit: repeatUnit, interval: Math.max(1, Number.parseInt(repeatInterval, 10) || 1) }
-                    : repeatMode === 'custom'
-                        ? { kind: 'custom' as const, dates: parseDateList(customRepeatDates).filter((date) => date !== targetDate) }
-                        : undefined;
-                target = { type: targetType, amount, targetDate, ...(repeat ? { repeat } : {}) };
+      {transactionDialog && (
+        <TransactionDialog
+          state={state}
+          transaction={transactionDialog.transaction}
+          selectedAccountId={selectedAccountId}
+          onClose={() => setTransactionDialog(null)}
+          onSubmit={(transaction) => {
+            if (transactionDialog.transaction) actions.updateTransaction(transactionDialog.transaction.id, transaction)
+            else actions.addTransaction(transaction)
+            setTransactionDialog(null)
+          }}
+          onDelete={transactionDialog.transaction ? () => {
+            if (window.confirm('Delete this transaction?')) {
+              actions.deleteTransaction(transactionDialog.transaction!.id)
+              setTransactionDialog(null)
             }
-            else {
-                const schedule = scheduleMode === 'custom'
-                    ? { kind: 'custom' as const, dates: parseDateList(customScheduleDates) }
-                    : {
-                        kind: 'recurring' as const,
-                        unit: scheduleUnit,
-                        interval: Math.max(1, Number.parseInt(scheduleInterval, 10) || 1),
-                        anchorDate,
-                    };
-                target = { type: targetType, amount, schedule };
+          } : undefined}
+        />
+      )}
+
+      {categoryDialog && (
+        <CategoryDialog
+          state={state}
+          initial={categoryDialog.mode === 'edit' ? categoryDialog.category : undefined}
+          groupId={categoryDialog.mode === 'create' ? categoryDialog.groupId : categoryDialog.category.groupId}
+          onClose={() => setCategoryDialog(null)}
+          onSubmit={(category) => {
+            if (categoryDialog.mode === 'edit') actions.updateCategory(categoryDialog.category.id, category)
+            else actions.addCategory(category)
+            setCategoryDialog(null)
+          }}
+          onArchive={categoryDialog.mode === 'edit' ? () => {
+            const summary = getCategorySummary(state, categoryDialog.category, state.activeMonth)
+            if (summary.available !== 0) {
+              window.alert('Move this category’s available money before archiving it.')
+              return
             }
-        }
-        onSubmit({ groupId: selectedGroupId, name: name.trim(), note: note.trim(), ...(target ? { target } : {}) });
-    };
-    return <DialogFrame title={initial ? 'Edit category' : 'Add category'} subtitle="Categories are envelopes. Targets can follow regular or irregular schedules." onClose={onClose} wide><form onSubmit={submit}><div className="form-grid single-column"><label>Category name<input value={name} onChange={(event) => setName(event.target.value)} autoFocus required/></label><label>Group<select value={selectedGroupId} onChange={(event) => setSelectedGroupId(event.target.value)}>{state.groups.filter((group) => !group.hidden).map((group) => <option value={group.id} key={group.id}>{group.name}</option>)}</select></label><label>Target type<select value={targetType} onChange={(event) => setTargetType(event.target.value as CategoryTarget['type'] | 'none')}><option value="none">No target</option><option value="monthly-spending">Refill spending balance on a schedule</option><option value="monthly-savings">Assign a fixed amount on a schedule</option><option value="by-date">Save a total amount by a deadline</option></select></label>{targetType !== 'none' && <label>{targetType === 'by-date' ? 'Total target amount' : 'Amount per occurrence'}<input inputMode="decimal" value={targetAmount} onChange={(event) => setTargetAmount(event.target.value)} placeholder="0.00" required/></label>}{targetType !== 'none' && targetType !== 'by-date' && <section className="target-schedule-box"><div className="target-schedule-heading"><strong>Schedule</strong><span>Each matching date contributes one occurrence to that month’s target.</span></div><label>Schedule style<select value={scheduleMode} onChange={(event) => setScheduleMode(event.target.value as 'recurring' | 'custom')}><option value="recurring">Repeat at a regular interval</option><option value="custom">Use custom irregular dates</option></select></label>{scheduleMode === 'recurring' ? <div className="target-inline-grid"><label>Every<input type="number" min="1" max="999" value={scheduleInterval} onChange={(event) => setScheduleInterval(event.target.value)} required/></label><label>Period<select value={scheduleUnit} onChange={(event) => setScheduleUnit(event.target.value as 'week' | 'month' | 'year')}><option value="week">Week(s)</option><option value="month">Month(s)</option><option value="year">Year(s)</option></select></label><label>First due date<input type="date" value={anchorDate} onChange={(event) => setAnchorDate(event.target.value)} required/></label></div> : <label>Custom dates<textarea value={customScheduleDates} onChange={(event) => setCustomScheduleDates(event.target.value)} placeholder={'2026-08-15\n2026-10-01\n2027-02-14'} rows={4} required/><small className="field-help">Enter one ISO date per line. Commas and spaces also work.</small></label>}</section>}{targetType === 'by-date' && <section className="target-schedule-box"><div className="target-schedule-heading"><strong>Deadline</strong><span>Rubies spreads the remaining amount across the months before the next deadline.</span></div><label>First target date<input type="date" min={`${state.activeMonth}-01`} value={targetDate} onChange={(event) => setTargetDate(event.target.value)} required/></label><label>After this deadline<select value={repeatMode} onChange={(event) => setRepeatMode(event.target.value as 'none' | 'recurring' | 'custom')}><option value="none">Stop after this target</option><option value="recurring">Repeat at a regular interval</option><option value="custom">Use custom future deadlines</option></select></label>{repeatMode === 'recurring' && <div className="target-inline-grid repeat-grid"><label>Repeat every<input type="number" min="1" max="999" value={repeatInterval} onChange={(event) => setRepeatInterval(event.target.value)} required/></label><label>Period<select value={repeatUnit} onChange={(event) => setRepeatUnit(event.target.value as 'month' | 'year')}><option value="month">Month(s)</option><option value="year">Year(s)</option></select></label></div>}{repeatMode === 'custom' && <label>Additional target dates<textarea value={customRepeatDates} onChange={(event) => setCustomRepeatDates(event.target.value)} placeholder={'2027-01-31\n2027-06-15\n2028-03-01'} rows={4} required/><small className="field-help">The first target date is included automatically.</small></label>}</section>}<label>Notes <span className="optional">Optional</span><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Purpose, rules, or a reminder" rows={3}/></label></div><footer className="dialog-actions split-actions">{onArchive ? <button type="button" className="danger-button" onClick={() => { if (window.confirm('Archive this category? Existing history will be kept.'))
-        onArchive(); }}>Archive</button> : <span />}<div><button type="button" className="secondary-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button">{initial ? 'Save category' : 'Add category'}</button></div></footer></form></DialogFrame>;
-};
-const MoveMoneyDialog = ({ state, readyToAssign, preset, onClose, onMove }: {
-    state: BudgetState;
-    readyToAssign: number;
-    preset: {
-        from?: string | null;
-        to?: string | null;
-    };
-    onClose: () => void;
-    onMove: (from: string | null, to: string | null, amount: number) => void;
-}) => {
-    const categories = state.categories.filter((category) => !category.hidden);
-    const [from, setFrom] = useState<string>(preset.from === null ? 'rta' : preset.from ?? 'rta');
-    const [to, setTo] = useState<string>(preset.to === null ? 'rta' : preset.to ?? categories.find((category) => category.id !== preset.from)?.id ?? 'rta');
-    const [amount, setAmount] = useState('');
-    const sourceId = from === 'rta' ? null : from;
-    const destinationId = to === 'rta' ? null : to;
-    const sourceAvailable = sourceId ? getCategorySummary(state, categories.find((category) => category.id === sourceId)!, state.activeMonth).available : readyToAssign;
-    const parsed = Math.abs(parseMoney(amount));
-    const valid = parsed > 0 && sourceId !== destinationId && parsed <= Math.max(0, sourceAvailable);
-    const submit = (event: FormEvent) => { event.preventDefault(); if (valid)
-        onMove(sourceId, destinationId, parsed); };
-    const options = <><option value="rta">Ready to assign ({formatMoney(readyToAssign, state.currency)})</option>{state.groups.map((group) => <optgroup label={group.name} key={group.id}>{categories.filter((category) => category.groupId === group.id).map((category) => <option value={category.id} key={category.id}>{category.name} ({formatMoney(getCategorySummary(state, category, state.activeMonth).available, state.currency)})</option>)}</optgroup>)}</>;
-    return <DialogFrame title="Move money" subtitle={`Reassign available money without changing your account balances in ${monthLabel(state.activeMonth)}.`} onClose={onClose}><form onSubmit={submit}><div className="move-flow"><label>From<select value={from} onChange={(event) => setFrom(event.target.value)}>{options}</select></label><span className="move-arrow">→</span><label>To<select value={to} onChange={(event) => setTo(event.target.value)}>{options}</select></label></div><label className="standalone-label">Amount<input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" autoFocus/></label><div className="source-balance">Available to move: <strong>{formatMoney(Math.max(0, sourceAvailable), state.currency)}</strong></div>{parsed > sourceAvailable && <div className="form-error">That source does not have enough available money.</div>}<footer className="dialog-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button" disabled={!valid}>Move money</button></footer></form></DialogFrame>;
-};
-const GroupDialog = ({ initialName, onClose, onSubmit }: {
-    initialName: string;
-    onClose: () => void;
-    onSubmit: (name: string) => void;
-}) => {
-    const [name, setName] = useState(initialName);
-    return <DialogFrame title={initialName ? 'Rename group' : 'New category group'} subtitle="Use groups to organize related envelopes." onClose={onClose}><form onSubmit={(event) => { event.preventDefault(); if (name.trim())
-        onSubmit(name.trim()); }}><div className="form-grid single-column"><label>Group name<input value={name} onChange={(event) => setName(event.target.value)} autoFocus required/></label></div><footer className="dialog-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" type="submit">Save group</button></footer></form></DialogFrame>;
-};
-const AccountDialog = ({ initial, onClose, onSubmit }: {
-    initial?: Account;
-    onClose: () => void;
-    onSubmit: (account: Omit<Account, 'id'>, openingBalance: number) => void;
-}) => {
-    const [name, setName] = useState(initial?.name ?? '');
-    const [type, setType] = useState<Account['type']>(initial?.type ?? 'cash');
-    const [onBudget, setOnBudget] = useState(initial?.onBudget ?? true);
-    const [closed, setClosed] = useState(initial?.closed ?? false);
-    const [openingBalance, setOpeningBalance] = useState('');
-    const submit = (event: FormEvent) => { event.preventDefault(); if (name.trim())
-        onSubmit({ name: name.trim(), type, onBudget, closed }, parseMoney(openingBalance)); };
-    return <DialogFrame title={initial ? 'Edit account' : 'Add account'} subtitle="Accounts tell Rubies where your real money lives." onClose={onClose}><form onSubmit={submit}><div className="form-grid single-column"><label>Account name<input value={name} onChange={(event) => setName(event.target.value)} autoFocus required/></label><label>Account type<select value={type} onChange={(event) => setType(event.target.value as Account['type'])}><option value="cash">Cash / checking / savings</option><option value="credit">Credit card</option><option value="tracking">Tracking account</option></select></label><label className="checkbox-label"><input type="checkbox" checked={onBudget} onChange={(event) => setOnBudget(event.target.checked)}/>Include this account in the budget</label>{!initial && <label>Current balance<input inputMode="decimal" value={openingBalance} onChange={(event) => setOpeningBalance(event.target.value)} placeholder="0.00 (use minus for debt)"/></label>}{initial && <label className="checkbox-label"><input type="checkbox" checked={closed} onChange={(event) => setClosed(event.target.checked)}/>Close this account</label>}</div><footer className="dialog-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" type="submit">{initial ? 'Save account' : 'Add account'}</button></footer></form></DialogFrame>;
-};
-const SettingsDialog = ({ state, mode, onClose, onExport, onImport, onChangePassword, onResetDemo, onLock }: {
-    state: BudgetState;
-    mode: Session['mode'];
-    onClose: () => void;
-    onExport: () => void;
-    onImport: () => void;
-    onChangePassword: (password: string) => Promise<void>;
-    onResetDemo: () => void;
-    onLock: () => void;
-}) => {
-    const [password, setPassword] = useState('');
-    const [confirm, setConfirm] = useState('');
-    const [message, setMessage] = useState('');
-    const change = async (event: FormEvent) => { event.preventDefault(); if (password.length < 8) {
-        setMessage('Use at least 8 characters.');
-        return;
-    } if (password !== confirm) {
-        setMessage('The passwords do not match.');
-        return;
-    } await onChangePassword(password); setPassword(''); setConfirm(''); setMessage('Password changed and vault re-encrypted.'); };
-    return <DialogFrame title="Settings & data" subtitle="Back up your budget and manage local protection." onClose={onClose} wide><div className="settings-body"><section className="settings-section"><h3>Data ownership</h3><p>Exports are readable JSON files. Keep them somewhere safe; they are not encrypted.</p><div className="settings-actions"><button className="secondary-button" onClick={onExport}><DownloadIcon />Export budget</button><button className="secondary-button" onClick={onImport}><UploadIcon />Import budget</button>{mode === 'demo' && <button className="secondary-button" onClick={onResetDemo}>Reset demo data</button>}<button className="secondary-button" onClick={onLock}><LockIcon />{mode === 'demo' ? 'Exit demo' : 'Lock now'}</button></div></section>{mode === 'protected' && <section className="settings-section"><h3>Change password</h3><p>This re-encrypts the current budget. Rubies cannot recover a forgotten password.</p><form onSubmit={change} className="password-change"><label>New password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password"/></label><label>Confirm password<input type="password" value={confirm} onChange={(event) => setConfirm(event.target.value)} autoComplete="new-password"/></label>{message && <div className={message.startsWith('Password changed') ? 'form-success' : 'form-error'}>{message}</div>}<button className="primary-button" type="submit">Change password</button></form></section>}<section className="settings-section"><h3>Budget summary</h3><dl className="summary-list"><div><dt>Budget</dt><dd>{state.name}</dd></div><div><dt>Accounts</dt><dd>{state.accounts.length}</dd></div><div><dt>Transactions</dt><dd>{state.transactions.length}</dd></div><div><dt>Storage</dt><dd>{mode === 'protected' ? 'Encrypted local vault' : 'Temporary demo memory'}</dd></div><div><dt>Version</dt><dd>{APP_VERSION}</dd></div></dl></section></div></DialogFrame>;
-};
-export default App;
+            actions.archiveCategory(categoryDialog.category.id)
+            setCategoryDialog(null)
+          } : undefined}
+        />
+      )}
+
+      {movePreset && (
+        <MoveMoneyDialog
+          state={state}
+          readyToAssign={readyToAssign}
+          preset={movePreset}
+          onClose={() => setMovePreset(null)}
+          onMove={(from, to, amount) => {
+            actions.moveMoney(state.activeMonth, from, to, amount)
+            setMovePreset(null)
+          }}
+        />
+      )}
+
+      {groupDialog && (
+        <GroupDialog
+          initialName={groupDialog.name}
+          onClose={() => setGroupDialog(null)}
+          onSubmit={(name) => {
+            if (groupDialog.id) actions.updateGroup(groupDialog.id, { name })
+            else actions.addGroup(name)
+            setGroupDialog(null)
+          }}
+        />
+      )}
+
+      {accountDialog && (
+        <AccountDialog
+          initial={accountDialog === 'new' ? undefined : accountDialog}
+          onClose={() => setAccountDialog(null)}
+          onSubmit={(account, openingBalance) => {
+            if (accountDialog === 'new') actions.addAccount(account, openingBalance)
+            else actions.updateAccount(accountDialog.id, account)
+            setAccountDialog(null)
+          }}
+        />
+      )}
+
+      {settingsOpen && (
+        <SettingsDialog
+          state={state}
+          mode={session.mode}
+          onClose={() => setSettingsOpen(false)}
+          onExport={exportData}
+          onImport={() => importInputRef.current?.click()}
+          onChangePassword={changePassword}
+          onResetDemo={() => actions.replaceState(createDemoState())}
+          onLock={onCloseSession}
+        />
+      )}
+
+      <input ref={importInputRef} type="file" accept="application/json,.json" hidden onChange={importData} />
+    </div>
+  )
+}
+
+const App = () => {
+  const [session, setSession] = useState<Session | null>(null)
+  return session
+    ? <BudgetWorkspace session={session} onCloseSession={() => setSession(null)} onUpdateSession={setSession} />
+    : <AccessGate onOpen={(next) => setSession({ ...next, state: normalizeBudgetState(next.state) })} />
+}
+
+export default App

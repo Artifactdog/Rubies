@@ -1,12 +1,10 @@
-export type AccountType = 'cash' | 'credit' | 'tracking'
 export type TargetType = 'monthly-spending' | 'monthly-savings' | 'by-date'
 export type TargetScheduleUnit = 'week' | 'month' | 'year'
 
 export interface Account {
   id: string
   name: string
-  type: AccountType
-  onBudget: boolean
+  note?: string
   closed?: boolean
 }
 
@@ -42,11 +40,12 @@ export type TargetRepeat =
 export interface CategoryTarget {
   type: TargetType
   amount: number
-  /** Legacy v0.2 field retained for backward compatibility. */
+  /** Legacy field retained so old Rubies exports keep working. */
   targetMonth?: string
   targetDate?: string
   schedule?: TargetSchedule
   repeat?: TargetRepeat
+  snoozedMonths?: string[]
 }
 
 export interface Category {
@@ -66,16 +65,16 @@ export interface Transaction {
   memo: string
   categoryId: string | null
   amount: number
-  cleared: boolean
 }
 
 export interface BudgetMonth {
   month: string
   assignments: Record<string, number>
+  note?: string
 }
 
 export interface BudgetState {
-  version: 2
+  version: 3
   name: string
   currency: string
   activeMonth: string
@@ -84,34 +83,76 @@ export interface BudgetState {
   accounts: Account[]
   transactions: Transaction[]
   months: Record<string, BudgetMonth>
+  importSource?: {
+    kind: 'nynab'
+    importedAt: string
+    sourceName: string
+  }
 }
 
 export interface TargetProgress {
+  /** Compatibility alias used by auto-assign. */
   needed: number
+  requiredThisMonth: number
+  leftToAssign: number
+  overallLeft: number
   progress: number
   label: string
   dueDate?: string
   scheduledAmount: number
+  snoozed: boolean
 }
 
 export interface CategoryMonthSummary {
   assigned: number
   activity: number
   available: number
-  status: 'healthy' | 'underfunded' | 'overspent'
+  status: 'healthy' | 'underfunded' | 'overspent' | 'snoozed'
   target: TargetProgress | null
 }
+
+export interface MonthFundingSummary {
+  requiredThisMonth: number
+  assignedTowardTargets: number
+  leftToAssign: number
+  targetCount: number
+}
+
+export interface ImportResult {
+  state: BudgetState
+  source: 'rubies' | 'nynab'
+  summary: string
+  warnings: string[]
+}
+
+type UnknownRecord = Record<string, unknown>
 
 export const uid = (prefix: string): string =>
   `${prefix}_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`
 
-export const currentMonthKey = (): string => new Date().toISOString().slice(0, 7)
-export const todayKey = (): string => new Date().toISOString().slice(0, 10)
+const localDateKey = (date: Date): string => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+export const currentMonthKey = (): string => localDateKey(new Date()).slice(0, 7)
+export const todayKey = (): string => localDateKey(new Date())
 export const monthKeyFromDate = (date: string): string => date.slice(0, 7)
 export const compareMonths = (left: string, right: string): number => left.localeCompare(right)
 export const compareDates = (left: string, right: string): number => left.localeCompare(right)
 
 const positiveInteger = (value: number): number => Math.max(1, Math.floor(value || 1))
+const isRecord = (value: unknown): value is UnknownRecord =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+const asString = (value: unknown, fallback = ''): string =>
+  typeof value === 'string' ? value : fallback
+const asNumber = (value: unknown, fallback = 0): number =>
+  typeof value === 'number' && Number.isFinite(value) ? value : fallback
+const asBoolean = (value: unknown, fallback = false): boolean =>
+  typeof value === 'boolean' ? value : fallback
+const asArray = (value: unknown): unknown[] => Array.isArray(value) ? value : []
 
 const dateFromKey = (date: string): Date => {
   const [year, month, day] = date.split('-').map(Number)
@@ -190,7 +231,10 @@ export const parseDateList = (value: string): string[] =>
   [...new Set(value.split(/[\s,;]+/).filter((item) => /^\d{4}-\d{2}-\d{2}$/.test(item)))]
     .sort(compareDates)
 
-const scheduleStep = (date: string, schedule: Extract<TargetSchedule, { kind: 'recurring' }>): string => {
+const scheduleStep = (
+  date: string,
+  schedule: Extract<TargetSchedule, { kind: 'recurring' }>,
+): string => {
   const interval = positiveInteger(schedule.interval)
   if (schedule.unit === 'week') return addDays(date, interval * 7)
   return addMonthsClamped(date, interval * (schedule.unit === 'year' ? 12 : 1))
@@ -278,7 +322,7 @@ export const getActiveTargetDate = (target: CategoryTarget, month: string): stri
 
 const scheduleDescription = (schedule: TargetSchedule, dates: string[]): string => {
   if (schedule.kind === 'custom') {
-    return dates.length === 1 ? `on ${dateLabel(dates[0])}` : `across ${dates.length} custom dates`
+    return dates.length === 1 ? `on ${dateLabel(dates[0])}` : `${dates.length} custom dates`
   }
   if (dates.length === 1) return `due ${dateLabel(dates[0])}`
   const unit = schedule.unit === 'week' ? 'weekly' : schedule.unit === 'month' ? 'monthly' : 'yearly'
@@ -299,9 +343,7 @@ export const getAccountBalance = (state: BudgetState, accountId: string): number
     .reduce((sum, transaction) => sum + transaction.amount, 0)
 
 export const getBudgetBalance = (state: BudgetState): number =>
-  state.accounts
-    .filter((account) => account.onBudget)
-    .reduce((sum, account) => sum + getAccountBalance(state, account.id), 0)
+  state.accounts.reduce((sum, account) => sum + getAccountBalance(state, account.id), 0)
 
 export const getMonthAssignments = (state: BudgetState, month: string): Record<string, number> =>
   state.months[month]?.assignments ?? {}
@@ -318,27 +360,54 @@ export const getCategoryActivity = (
     )
     .reduce((sum, transaction) => sum + transaction.amount, 0)
 
+const getRelevantMonths = (state: BudgetState): string[] =>
+  [...new Set<string>([
+    ...Object.keys(state.months),
+    ...state.transactions.map((transaction) => monthKeyFromDate(transaction.date)),
+  ])].sort(compareMonths)
+
 export const getCategoryAvailableBeforeMonth = (
   state: BudgetState,
   categoryId: string,
   month: string,
 ): number => {
-  const relevantMonths = new Set<string>([
-    ...Object.keys(state.months),
-    ...state.transactions.map((transaction) => monthKeyFromDate(transaction.date)),
-  ])
-
-  return [...relevantMonths]
-    .filter((key) => compareMonths(key, month) < 0)
-    .sort(compareMonths)
-    .reduce(
-      (available, key) =>
-        available +
-        (getMonthAssignments(state, key)[categoryId] ?? 0) +
-        getCategoryActivity(state, categoryId, key),
-      0,
-    )
+  let available = 0
+  for (const key of getRelevantMonths(state)) {
+    if (compareMonths(key, month) >= 0) break
+    available +=
+      (getMonthAssignments(state, key)[categoryId] ?? 0) +
+      getCategoryActivity(state, categoryId, key)
+    // Rubies has only cash-style accounts. Negative category balances are
+    // covered by the next month's Ready to Assign instead of rolling forward.
+    available = Math.max(0, available)
+  }
+  return available
 }
+
+export const getCashOverspendingBeforeMonth = (
+  state: BudgetState,
+  month: string,
+): number => {
+  let overspending = 0
+  const relevantMonths = getRelevantMonths(state).filter((key) => compareMonths(key, month) < 0)
+
+  for (const category of state.categories) {
+    let available = 0
+    for (const key of relevantMonths) {
+      const endOfMonth =
+        available +
+        (getMonthAssignments(state, key)[category.id] ?? 0) +
+        getCategoryActivity(state, category.id, key)
+      if (endOfMonth < 0) overspending += -endOfMonth
+      available = Math.max(0, endOfMonth)
+    }
+  }
+
+  return overspending
+}
+
+const isTargetSnoozed = (target: CategoryTarget, month: string): boolean =>
+  target.snoozedMonths?.includes(month) ?? false
 
 export const getTargetProgress = (
   state: BudgetState,
@@ -350,6 +419,20 @@ export const getTargetProgress = (
 ): TargetProgress | null => {
   if (!category.target) return null
 
+  const snoozed = isTargetSnoozed(category.target, month)
+  if (snoozed) {
+    return {
+      needed: 0,
+      requiredThisMonth: 0,
+      leftToAssign: 0,
+      overallLeft: 0,
+      progress: 1,
+      label: `Snoozed for ${monthLabel(month)}`,
+      scheduledAmount: 0,
+      snoozed: true,
+    }
+  }
+
   if (category.target.type !== 'by-date') {
     const schedule = normalizedSchedule(category.target, month)
     const dates = getScheduleDatesInMonth(schedule, month)
@@ -359,28 +442,38 @@ export const getTargetProgress = (
       const nextDate = getNextScheduleDate(schedule, month)
       return {
         needed: 0,
-        progress: 0,
+        requiredThisMonth: 0,
+        leftToAssign: 0,
+        overallLeft: 0,
+        progress: 1,
         scheduledAmount: 0,
         ...(nextDate ? { dueDate: nextDate } : {}),
         label: nextDate ? `No target this month · next ${dateLabel(nextDate)}` : 'No more scheduled dates',
+        snoozed: false,
       }
     }
 
-    const needed = category.target.type === 'monthly-spending'
-      ? Math.max(0, scheduledAmount - available)
-      : Math.max(0, scheduledAmount - assigned)
-    const progressValue = category.target.type === 'monthly-spending' ? available : assigned
-    const verb = category.target.type === 'monthly-spending' ? 'Refill to' : 'Assign'
+    const availableBefore = getCategoryAvailableBeforeMonth(state, category.id, month)
+    const requiredThisMonth = category.target.type === 'monthly-spending'
+      ? Math.max(0, scheduledAmount - Math.max(0, availableBefore + activity))
+      : scheduledAmount
+    const leftToAssign = Math.max(0, requiredThisMonth - assigned)
+    const fundedThisMonth = Math.max(0, Math.min(requiredThisMonth, assigned))
+    const verb = category.target.type === 'monthly-spending' ? 'Refill' : 'Set aside'
     const amountLabel = dates.length > 1
       ? `${formatMoney(category.target.amount, state.currency)} × ${dates.length}`
       : formatMoney(scheduledAmount, state.currency)
 
     return {
-      needed,
-      progress: scheduledAmount === 0 ? 0 : Math.max(0, Math.min(1, progressValue / scheduledAmount)),
+      needed: leftToAssign,
+      requiredThisMonth,
+      leftToAssign,
+      overallLeft: leftToAssign,
+      progress: requiredThisMonth === 0 ? 1 : fundedThisMonth / requiredThisMonth,
       scheduledAmount,
       dueDate: dates.at(-1),
       label: `${verb} ${amountLabel} · ${scheduleDescription(schedule, dates)}`,
+      snoozed: false,
     }
   }
 
@@ -388,18 +481,25 @@ export const getTargetProgress = (
   const dueMonth = monthKeyFromDate(dueDate)
   const availableBefore = getCategoryAvailableBeforeMonth(state, category.id, month)
   const amountBeforeCurrentAssignment = Math.max(0, availableBefore + activity)
-  const remaining = Math.max(0, category.target.amount - amountBeforeCurrentAssignment)
+  const remainingBeforeAssignment = Math.max(0, category.target.amount - amountBeforeCurrentAssignment)
   const monthsLeft = compareMonths(dueMonth, month) < 0 ? 1 : monthsBetweenInclusive(month, dueMonth)
-  const recommendedThisMonth = Math.ceil(remaining / monthsLeft)
-  const needed = Math.max(0, recommendedThisMonth - assigned)
+  const requiredThisMonth = Math.ceil(remainingBeforeAssignment / monthsLeft)
+  const leftToAssign = Math.max(0, requiredThisMonth - assigned)
+  const overallLeft = Math.max(0, category.target.amount - Math.max(0, available))
   const overdue = compareMonths(dueMonth, month) < 0
 
   return {
-    needed,
-    progress: Math.max(0, Math.min(1, available / category.target.amount)),
+    needed: leftToAssign,
+    requiredThisMonth,
+    leftToAssign,
+    overallLeft,
+    progress: category.target.amount === 0
+      ? 1
+      : Math.max(0, Math.min(1, Math.max(0, available) / category.target.amount)),
     scheduledAmount: category.target.amount,
     dueDate,
     label: `${formatMoney(category.target.amount, state.currency)} ${overdue ? 'overdue since' : 'by'} ${dateLabel(dueDate)}${repeatDescription(category.target.repeat)}`,
+    snoozed: false,
   }
 }
 
@@ -414,19 +514,41 @@ export const getCategorySummary = (
   const available = availableBefore + assigned + activity
   const target = getTargetProgress(state, category, month, assigned, activity, available)
 
-  const status = available < 0 ? 'overspent' : target && target.needed > 0 ? 'underfunded' : 'healthy'
+  const status = available < 0
+    ? 'overspent'
+    : target?.snoozed
+      ? 'snoozed'
+      : target && target.leftToAssign > 0
+        ? 'underfunded'
+        : 'healthy'
   return { assigned, activity, available, status, target }
 }
 
-export const getReadyToAssign = (state: BudgetState, month: string): number => {
-  const budgetAccountIds = new Set(
-    state.accounts.filter((account) => account.onBudget).map((account) => account.id),
+export const getMonthFundingSummary = (state: BudgetState, month: string): MonthFundingSummary => {
+  const targets = state.categories
+    .filter((category) => !category.hidden && category.target)
+    .map((category) => getCategorySummary(state, category, month).target)
+    .filter((target): target is TargetProgress => target !== null && !target.snoozed)
+
+  return targets.reduce<MonthFundingSummary>(
+    (summary, target) => ({
+      requiredThisMonth: summary.requiredThisMonth + target.requiredThisMonth,
+      assignedTowardTargets:
+        summary.assignedTowardTargets + Math.max(0, target.requiredThisMonth - target.leftToAssign),
+      leftToAssign: summary.leftToAssign + target.leftToAssign,
+      targetCount: summary.targetCount + (target.requiredThisMonth > 0 ? 1 : 0),
+    }),
+    { requiredThisMonth: 0, assignedTowardTargets: 0, leftToAssign: 0, targetCount: 0 },
   )
+}
+
+export const getReadyToAssign = (state: BudgetState, month: string): number => {
+  const accountIds = new Set(state.accounts.map((account) => account.id))
 
   const uncategorizedCashFlow = state.transactions
     .filter(
       (transaction) =>
-        budgetAccountIds.has(transaction.accountId) &&
+        accountIds.has(transaction.accountId) &&
         transaction.categoryId === null &&
         compareMonths(monthKeyFromDate(transaction.date), month) <= 0,
     )
@@ -437,7 +559,7 @@ export const getReadyToAssign = (state: BudgetState, month: string): number => {
     .flatMap((budgetMonth) => Object.values(budgetMonth.assignments))
     .reduce((sum, amount) => sum + amount, 0)
 
-  return uncategorizedCashFlow - assigned
+  return uncategorizedCashFlow - assigned - getCashOverspendingBeforeMonth(state, month)
 }
 
 export const getRecentTransactions = (state: BudgetState, accountId?: string): Transaction[] =>
@@ -445,18 +567,461 @@ export const getRecentTransactions = (state: BudgetState, accountId?: string): T
     .filter((transaction) => !accountId || transaction.accountId === accountId)
     .sort((left, right) => right.date.localeCompare(left.date) || right.id.localeCompare(left.id))
 
-const monthlySchedule = (anchorDate: string, interval = 1): TargetSchedule => ({
-  kind: 'recurring',
-  unit: 'month',
-  interval,
-  anchorDate,
-})
+const normalizeSchedule = (value: unknown): TargetSchedule | undefined => {
+  if (!isRecord(value)) return undefined
+  if (value.kind === 'custom') {
+    return { kind: 'custom', dates: asArray(value.dates).map((date) => asString(date)).filter(Boolean) }
+  }
+  if (value.kind === 'recurring') {
+    const unit = value.unit === 'week' || value.unit === 'year' ? value.unit : 'month'
+    return {
+      kind: 'recurring',
+      unit,
+      interval: positiveInteger(asNumber(value.interval, 1)),
+      anchorDate: asString(value.anchorDate, todayKey()),
+    }
+  }
+  return undefined
+}
+
+const normalizeRepeat = (value: unknown): TargetRepeat | undefined => {
+  if (!isRecord(value)) return undefined
+  if (value.kind === 'custom') {
+    return { kind: 'custom', dates: asArray(value.dates).map((date) => asString(date)).filter(Boolean) }
+  }
+  if (value.kind === 'recurring') {
+    return {
+      kind: 'recurring',
+      unit: value.unit === 'month' ? 'month' : 'year',
+      interval: positiveInteger(asNumber(value.interval, 1)),
+    }
+  }
+  return undefined
+}
+
+const normalizeTarget = (value: unknown): CategoryTarget | undefined => {
+  if (!isRecord(value)) return undefined
+  const type: TargetType =
+    value.type === 'monthly-spending' || value.type === 'by-date'
+      ? value.type
+      : 'monthly-savings'
+  const amount = Math.max(0, Math.round(asNumber(value.amount)))
+  if (amount <= 0) return undefined
+  const schedule = normalizeSchedule(value.schedule)
+  const repeat = normalizeRepeat(value.repeat)
+  const snoozedMonths = asArray(value.snoozedMonths)
+    .map((month) => asString(month))
+    .filter((month) => /^\d{4}-\d{2}$/.test(month))
+  return {
+    type,
+    amount,
+    ...(asString(value.targetMonth) ? { targetMonth: asString(value.targetMonth) } : {}),
+    ...(asString(value.targetDate) ? { targetDate: asString(value.targetDate) } : {}),
+    ...(schedule ? { schedule } : {}),
+    ...(repeat ? { repeat } : {}),
+    ...(snoozedMonths.length ? { snoozedMonths: [...new Set(snoozedMonths)] } : {}),
+  }
+}
+
+export const normalizeBudgetState = (raw: unknown): BudgetState => {
+  if (!isRecord(raw)) throw new Error('This file does not contain a valid Rubies budget.')
+
+  const accounts: Account[] = asArray(raw.accounts)
+    .filter(isRecord)
+    .map((account) => ({
+      id: asString(account.id, uid('account')),
+      name: asString(account.name, 'Account'),
+      ...(asString(account.note) ? { note: asString(account.note) } : {}),
+      ...(asBoolean(account.closed) ? { closed: true } : {}),
+    }))
+
+  const groups: CategoryGroup[] = asArray(raw.groups)
+    .filter(isRecord)
+    .map((group) => ({
+      id: asString(group.id, uid('group')),
+      name: asString(group.name, 'Group'),
+      ...(asBoolean(group.hidden) ? { hidden: true } : {}),
+    }))
+
+  const fallbackGroupId = groups[0]?.id ?? 'group_general'
+  if (groups.length === 0) groups.push({ id: fallbackGroupId, name: 'General' })
+
+  const categories: Category[] = asArray(raw.categories)
+    .filter(isRecord)
+    .map((category) => {
+      const target = normalizeTarget(category.target)
+      return {
+        id: asString(category.id, uid('category')),
+        groupId: asString(category.groupId, fallbackGroupId),
+        name: asString(category.name, 'Category'),
+        ...(asString(category.note) ? { note: asString(category.note) } : {}),
+        ...(asBoolean(category.hidden) ? { hidden: true } : {}),
+        ...(target ? { target } : {}),
+      }
+    })
+
+  const accountIds = new Set(accounts.map((account) => account.id))
+  const categoryIds = new Set(categories.map((category) => category.id))
+  const transactions: Transaction[] = asArray(raw.transactions)
+    .filter(isRecord)
+    .map((transaction) => ({
+      id: asString(transaction.id, uid('transaction')),
+      accountId: asString(transaction.accountId),
+      date: asString(transaction.date, todayKey()),
+      payee: asString(transaction.payee, 'Transaction'),
+      memo: asString(transaction.memo),
+      categoryId:
+        typeof transaction.categoryId === 'string' && categoryIds.has(transaction.categoryId)
+          ? transaction.categoryId
+          : null,
+      amount: Math.round(asNumber(transaction.amount)),
+    }))
+    .filter((transaction) => accountIds.has(transaction.accountId))
+
+  const months: Record<string, BudgetMonth> = {}
+  if (isRecord(raw.months)) {
+    for (const [monthKey, monthValue] of Object.entries(raw.months)) {
+      if (!/^\d{4}-\d{2}$/.test(monthKey) || !isRecord(monthValue)) continue
+      const assignments: Record<string, number> = {}
+      if (isRecord(monthValue.assignments)) {
+        for (const [categoryId, amount] of Object.entries(monthValue.assignments)) {
+          if (categoryIds.has(categoryId)) assignments[categoryId] = Math.round(asNumber(amount))
+        }
+      }
+      months[monthKey] = {
+        month: monthKey,
+        assignments,
+        ...(asString(monthValue.note) ? { note: asString(monthValue.note) } : {}),
+      }
+    }
+  }
+
+  const activeMonth = /^\d{4}-\d{2}$/.test(asString(raw.activeMonth))
+    ? asString(raw.activeMonth)
+    : currentMonthKey()
+  if (!months[activeMonth]) months[activeMonth] = { month: activeMonth, assignments: {} }
+
+  return {
+    version: 3,
+    name: asString(raw.name, 'My budget'),
+    currency: asString(raw.currency, 'USD'),
+    activeMonth,
+    groups,
+    categories,
+    accounts,
+    transactions,
+    months,
+    ...(isRecord(raw.importSource) && raw.importSource.kind === 'nynab'
+      ? {
+          importSource: {
+            kind: 'nynab',
+            importedAt: asString(raw.importSource.importedAt, new Date().toISOString()),
+            sourceName: asString(raw.importSource.sourceName, 'nYNAB export'),
+          },
+        }
+      : {}),
+  }
+}
+
+const milliunitsToMinor = (amount: unknown, decimalDigits: number): number => {
+  const divisor = 1000 / (10 ** Math.max(0, Math.min(3, decimalDigits)))
+  return Math.round(asNumber(amount) / divisor)
+}
+
+const monthDateWithDay = (month: string, day: number | null): string => {
+  if (!day) return monthEndDate(month)
+  const [year, monthNumber] = month.split('-').map(Number)
+  return `${month}-${String(Math.min(Math.max(1, day), daysInMonth(year, monthNumber - 1))).padStart(2, '0')}`
+}
+
+const importNynabTarget = (
+  category: UnknownRecord,
+  decimalDigits: number,
+  fallbackMonth: string,
+  snoozedMonths: string[],
+): CategoryTarget | undefined => {
+  const amount = Math.max(0, milliunitsToMinor(category.goal_target, decimalDigits))
+  if (!asString(category.goal_type) || amount <= 0) return undefined
+
+  const cadence = asNumber(category.goal_cadence, 0)
+  const frequency = positiveInteger(asNumber(category.goal_cadence_frequency, 1))
+  const creationMonth = asString(category.goal_creation_month, `${fallbackMonth}-01`).slice(0, 7)
+  const targetMonth = asString(category.goal_target_month).slice(0, 7)
+  const goalDayValue = asNumber(category.goal_day, 0)
+  const goalDay = goalDayValue > 0 ? goalDayValue : null
+  const snoozePart = snoozedMonths.length
+    ? { snoozedMonths: [...new Set(snoozedMonths)].sort(compareMonths) }
+    : {}
+
+  if (cadence === 0 && targetMonth) {
+    return {
+      type: 'by-date',
+      amount,
+      targetDate: monthDateWithDay(targetMonth, goalDay),
+      ...snoozePart,
+    }
+  }
+
+  if (cadence === 13 && targetMonth) {
+    return {
+      type: 'by-date',
+      amount,
+      targetDate: monthDateWithDay(targetMonth, goalDay),
+      repeat: { kind: 'recurring', unit: 'year', interval: frequency },
+      ...snoozePart,
+    }
+  }
+
+  if (cadence === 1 && frequency > 1 && targetMonth) {
+    return {
+      type: 'by-date',
+      amount,
+      targetDate: monthDateWithDay(targetMonth, goalDay),
+      repeat: { kind: 'recurring', unit: 'month', interval: frequency },
+      ...snoozePart,
+    }
+  }
+
+  return {
+    type: 'monthly-savings',
+    amount,
+    schedule: {
+      kind: 'recurring',
+      unit: 'month',
+      interval: Math.max(1, frequency),
+      anchorDate: monthDateWithDay(creationMonth, goalDay),
+    },
+    ...snoozePart,
+  }
+}
+
+const importNynabPlan = (plan: UnknownRecord): ImportResult => {
+  const currencyFormat = isRecord(plan.currency_format) ? plan.currency_format : {}
+  const currency = asString(currencyFormat.iso_code, 'USD')
+  const decimalDigits = Math.max(0, Math.min(3, Math.round(asNumber(currencyFormat.decimal_digits, 2))))
+  const planName = asString(plan.name, 'Imported nYNAB budget')
+  const planMonths = asArray(plan.months).filter(isRecord)
+  const fallbackMonth = asString(plan.last_month, todayKey()).slice(0, 7) || currentMonthKey()
+
+  const rawCategories = asArray(plan.categories).filter(isRecord)
+  const userCategories = rawCategories.filter(
+    (category) => !asBoolean(category.deleted) && !asBoolean(category.internal),
+  )
+  const usedGroupIds = new Set(userCategories.map((category) => asString(category.category_group_id)))
+
+  const groups: CategoryGroup[] = asArray(plan.category_groups)
+    .filter(isRecord)
+    .filter((group) => !asBoolean(group.deleted) && usedGroupIds.has(asString(group.id)))
+    .map((group) => ({
+      id: asString(group.id, uid('group')),
+      name: asString(group.name, 'Group'),
+      ...(asBoolean(group.hidden) ? { hidden: true } : {}),
+    }))
+
+  const fallbackGroupId = groups[0]?.id ?? 'group_imported'
+  if (groups.length === 0) groups.push({ id: fallbackGroupId, name: 'Imported categories' })
+  const importedGroupIds = new Set(groups.map((group) => group.id))
+
+  const snoozedByCategory = new Map<string, string[]>()
+  for (const month of planMonths) {
+    const monthKey = asString(month.month).slice(0, 7)
+    if (!monthKey) continue
+    for (const monthCategory of asArray(month.categories).filter(isRecord)) {
+      if (monthCategory.goal_snoozed_at) {
+        const categoryId = asString(monthCategory.id)
+        if (categoryId) {
+          const values = snoozedByCategory.get(categoryId) ?? []
+          values.push(monthKey)
+          snoozedByCategory.set(categoryId, values)
+        }
+      }
+    }
+  }
+
+  const categories: Category[] = userCategories.map((category) => {
+    const id = asString(category.id, uid('category'))
+    const target = importNynabTarget(
+      category,
+      decimalDigits,
+      fallbackMonth,
+      snoozedByCategory.get(id) ?? [],
+    )
+    return {
+      id,
+      groupId: importedGroupIds.has(asString(category.category_group_id))
+        ? asString(category.category_group_id)
+        : fallbackGroupId,
+      name: asString(category.name, 'Category'),
+      ...(asString(category.note) ? { note: asString(category.note) } : {}),
+      ...(asBoolean(category.hidden) ? { hidden: true } : {}),
+      ...(target ? { target } : {}),
+    }
+  })
+
+  const categoryIds = new Set(categories.map((category) => category.id))
+  const accounts: Account[] = asArray(plan.accounts)
+    .filter(isRecord)
+    .filter((account) => !asBoolean(account.deleted))
+    .map((account) => ({
+      id: asString(account.id, uid('account')),
+      name: asString(account.name, 'Account'),
+      ...(asString(account.note) ? { note: asString(account.note) } : {}),
+      ...(asBoolean(account.closed) ? { closed: true } : {}),
+    }))
+  const accountIds = new Set(accounts.map((account) => account.id))
+
+  const payeeNames = new Map<string, string>()
+  for (const payee of asArray(plan.payees).filter(isRecord)) {
+    if (!asBoolean(payee.deleted)) payeeNames.set(asString(payee.id), asString(payee.name, 'Transaction'))
+  }
+
+  const rawSubtransactions = asArray(plan.subtransactions).filter(isRecord)
+  const subtransactionsByParent = new Map<string, UnknownRecord[]>()
+  for (const subtransaction of rawSubtransactions) {
+    const parentId = asString(subtransaction.transaction_id || subtransaction.parent_transaction_id)
+    if (!parentId) continue
+    const values = subtransactionsByParent.get(parentId) ?? []
+    values.push(subtransaction)
+    subtransactionsByParent.set(parentId, values)
+  }
+
+  const transactions: Transaction[] = []
+  for (const transaction of asArray(plan.transactions).filter(isRecord)) {
+    if (asBoolean(transaction.deleted)) continue
+    const accountId = asString(transaction.account_id)
+    if (!accountIds.has(accountId)) continue
+    const parentId = asString(transaction.id, uid('transaction'))
+    const date = asString(transaction.date, todayKey())
+    const parentPayee = payeeNames.get(asString(transaction.payee_id))
+      ?? asString(transaction.import_payee_name)
+      ?? asString(transaction.import_payee_name_original)
+      ?? 'Transaction'
+    const splits = subtransactionsByParent.get(parentId) ?? []
+
+    if (splits.length > 0) {
+      for (const split of splits) {
+        if (asBoolean(split.deleted)) continue
+        const splitCategoryId = asString(split.category_id)
+        transactions.push({
+          id: asString(split.id, `${parentId}_${transactions.length}`),
+          accountId,
+          date,
+          payee: payeeNames.get(asString(split.payee_id)) ?? parentPayee,
+          memo: asString(split.memo, asString(transaction.memo)),
+          categoryId: categoryIds.has(splitCategoryId) ? splitCategoryId : null,
+          amount: milliunitsToMinor(split.amount, decimalDigits),
+        })
+      }
+      continue
+    }
+
+    const categoryId = asString(transaction.category_id)
+    transactions.push({
+      id: parentId,
+      accountId,
+      date,
+      payee: parentPayee,
+      memo: asString(transaction.memo),
+      categoryId: categoryIds.has(categoryId) ? categoryId : null,
+      amount: milliunitsToMinor(transaction.amount, decimalDigits),
+    })
+  }
+
+  const lastModifiedDate = asString(plan.last_modified_on, todayKey()).slice(0, 10)
+  for (const rawAccount of asArray(plan.accounts).filter(isRecord)) {
+    if (asBoolean(rawAccount.deleted)) continue
+    const accountId = asString(rawAccount.id)
+    if (!accountIds.has(accountId)) continue
+    const expected = milliunitsToMinor(rawAccount.balance, decimalDigits)
+    const actual = transactions
+      .filter((transaction) => transaction.accountId === accountId)
+      .reduce((sum, transaction) => sum + transaction.amount, 0)
+    const difference = expected - actual
+    if (difference !== 0) {
+      transactions.push({
+        id: `nynab_balance_${accountId}`,
+        accountId,
+        date: /^\d{4}-\d{2}-\d{2}$/.test(lastModifiedDate) ? lastModifiedDate : todayKey(),
+        payee: 'Imported balance adjustment',
+        memo: 'Added by Rubies so the imported account balance matches the nYNAB export.',
+        categoryId: null,
+        amount: difference,
+      })
+    }
+  }
+
+  const months: Record<string, BudgetMonth> = {}
+  for (const month of planMonths) {
+    if (asBoolean(month.deleted)) continue
+    const monthKey = asString(month.month).slice(0, 7)
+    if (!/^\d{4}-\d{2}$/.test(monthKey)) continue
+    const assignments: Record<string, number> = {}
+    for (const category of asArray(month.categories).filter(isRecord)) {
+      const categoryId = asString(category.id)
+      if (categoryIds.has(categoryId)) {
+        assignments[categoryId] = milliunitsToMinor(category.budgeted, decimalDigits)
+      }
+    }
+    months[monthKey] = {
+      month: monthKey,
+      assignments,
+      ...(asString(month.note) ? { note: asString(month.note) } : {}),
+    }
+  }
+
+  const todayMonth = currentMonthKey()
+  const activeMonth = months[todayMonth]
+    ? todayMonth
+    : Object.keys(months).sort(compareMonths).at(-1) ?? fallbackMonth
+  if (!months[activeMonth]) months[activeMonth] = { month: activeMonth, assignments: {} }
+
+  const warnings: string[] = []
+  const scheduledCount = asArray(plan.scheduled_transactions).filter(isRecord).length
+  if (scheduledCount > 0) {
+    warnings.push(`${scheduledCount} scheduled transactions were not imported because Rubies does not schedule transactions yet.`)
+  }
+
+  return {
+    source: 'nynab',
+    state: {
+      version: 3,
+      name: planName,
+      currency,
+      activeMonth,
+      groups,
+      categories,
+      accounts,
+      transactions,
+      months,
+      importSource: {
+        kind: 'nynab',
+        importedAt: new Date().toISOString(),
+        sourceName: planName,
+      },
+    },
+    summary: `Imported ${accounts.length} accounts, ${categories.length} categories, ${transactions.length} transactions, and ${Object.keys(months).length} budget months from ${planName}.`,
+    warnings,
+  }
+}
+
+export const parseImportedBudget = (raw: unknown): ImportResult => {
+  if (isRecord(raw) && isRecord(raw.data) && isRecord(raw.data.plan)) {
+    return importNynabPlan(raw.data.plan)
+  }
+
+  const state = normalizeBudgetState(raw)
+  return {
+    source: 'rubies',
+    state,
+    summary: `Imported ${state.accounts.length} accounts, ${state.categories.length} categories, ${state.transactions.length} transactions, and ${Object.keys(state.months).length} budget months.`,
+    warnings: [],
+  }
+}
 
 export const createEmptyState = (): BudgetState => {
   const month = currentMonthKey()
-  const anchorDate = `${month}-01`
   return {
-    version: 2,
+    version: 3,
     name: 'My budget',
     currency: 'USD',
     activeMonth: month,
@@ -470,19 +1035,31 @@ export const createEmptyState = (): BudgetState => {
         id: 'category_rent',
         groupId: 'group_bills',
         name: 'Rent / mortgage',
-        target: { type: 'monthly-spending', amount: 100_000, schedule: monthlySchedule(anchorDate) },
+        target: {
+          type: 'monthly-savings',
+          amount: 100_000,
+          schedule: { kind: 'recurring', unit: 'month', interval: 1, anchorDate: `${month}-01` },
+        },
       },
       {
         id: 'category_groceries',
         groupId: 'group_needs',
         name: 'Groceries',
-        target: { type: 'monthly-spending', amount: 10_000, schedule: { kind: 'recurring', unit: 'week', interval: 1, anchorDate } },
+        target: {
+          type: 'monthly-spending',
+          amount: 40_000,
+          schedule: { kind: 'recurring', unit: 'month', interval: 1, anchorDate: `${month}-01` },
+        },
       },
       {
         id: 'category_emergency',
         groupId: 'group_goals',
         name: 'Emergency fund',
-        target: { type: 'monthly-savings', amount: 20_000, schedule: monthlySchedule(anchorDate) },
+        target: {
+          type: 'monthly-savings',
+          amount: 20_000,
+          schedule: { kind: 'recurring', unit: 'month', interval: 1, anchorDate: `${month}-01` },
+        },
       },
     ],
     accounts: [],
@@ -491,14 +1068,16 @@ export const createEmptyState = (): BudgetState => {
   }
 }
 
-const dateOffset = (days: number): string =>
-  new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10)
+const dateOffset = (days: number): string => {
+  const date = new Date()
+  date.setDate(date.getDate() + days)
+  return localDateKey(date)
+}
 
 export const createDemoState = (): BudgetState => {
   const month = currentMonthKey()
   const previousMonth = shiftMonth(month, -1)
-  const nextYearMonth = shiftMonth(month, 8)
-  const monthAnchor = `${previousMonth}-01`
+  const nextMonth = shiftMonth(month, 1)
 
   const groups: CategoryGroup[] = [
     { id: 'group_bills', name: 'Fixed bills' },
@@ -508,36 +1087,110 @@ export const createDemoState = (): BudgetState => {
   ]
 
   const categories: Category[] = [
-    { id: 'category_rent', groupId: 'group_bills', name: 'Rent', target: { type: 'monthly-spending', amount: 125_000, schedule: monthlySchedule(`${previousMonth}-01`) } },
-    { id: 'category_internet', groupId: 'group_bills', name: 'Internet', target: { type: 'monthly-spending', amount: 6_500, schedule: monthlySchedule(`${previousMonth}-12`) } },
-    { id: 'category_groceries', groupId: 'group_living', name: 'Groceries', target: { type: 'monthly-spending', amount: 11_000, schedule: { kind: 'recurring', unit: 'week', interval: 1, anchorDate: monthAnchor } } },
-    { id: 'category_transport', groupId: 'group_living', name: 'Transport', target: { type: 'monthly-savings', amount: 7_500, schedule: { kind: 'recurring', unit: 'week', interval: 2, anchorDate: monthAnchor } } },
-    { id: 'category_medical', groupId: 'group_true', name: 'Medical', target: { type: 'monthly-savings', amount: 10_000, schedule: monthlySchedule(`${previousMonth}-05`) } },
-    { id: 'category_annual', groupId: 'group_true', name: 'Annual subscriptions', target: { type: 'by-date', amount: 72_000, targetDate: monthEndDate(nextYearMonth), repeat: { kind: 'recurring', unit: 'year', interval: 1 } } },
-    { id: 'category_repairs', groupId: 'group_true', name: 'Home maintenance', target: { type: 'by-date', amount: 45_000, targetDate: monthEndDate(shiftMonth(month, 2)), repeat: { kind: 'recurring', unit: 'month', interval: 3 } } },
-    { id: 'category_fun', groupId: 'group_fun', name: 'Fun money', target: { type: 'monthly-spending', amount: 18_000, schedule: monthlySchedule(`${previousMonth}-01`) } },
-    { id: 'category_gifts', groupId: 'group_fun', name: 'Gifts', target: { type: 'monthly-savings', amount: 8_000, schedule: { kind: 'custom', dates: [dateOffset(10), dateOffset(45), dateOffset(120)] } } },
-    { id: 'category_travel', groupId: 'group_fun', name: 'Japan trip', target: { type: 'by-date', amount: 250_000, targetDate: monthEndDate(shiftMonth(month, 10)) }, note: 'Flights, hotel, and a generous ramen budget.' },
+    {
+      id: 'category_rent',
+      groupId: 'group_bills',
+      name: 'Rent',
+      target: {
+        type: 'monthly-savings',
+        amount: 125_000,
+        schedule: { kind: 'recurring', unit: 'month', interval: 1, anchorDate: `${previousMonth}-05` },
+      },
+    },
+    {
+      id: 'category_internet',
+      groupId: 'group_bills',
+      name: 'Internet',
+      target: {
+        type: 'monthly-savings',
+        amount: 6_500,
+        schedule: { kind: 'recurring', unit: 'month', interval: 1, anchorDate: `${previousMonth}-12` },
+      },
+    },
+    {
+      id: 'category_groceries',
+      groupId: 'group_living',
+      name: 'Groceries',
+      target: {
+        type: 'monthly-spending',
+        amount: 11_000,
+        schedule: { kind: 'recurring', unit: 'week', interval: 1, anchorDate: `${previousMonth}-03` },
+      },
+    },
+    {
+      id: 'category_transport',
+      groupId: 'group_living',
+      name: 'Transport',
+      target: {
+        type: 'monthly-savings',
+        amount: 7_500,
+        schedule: { kind: 'recurring', unit: 'week', interval: 2, anchorDate: `${previousMonth}-06` },
+      },
+    },
+    {
+      id: 'category_medical',
+      groupId: 'group_true',
+      name: 'Medical',
+      target: {
+        type: 'by-date',
+        amount: 120_000,
+        targetDate: monthEndDate(shiftMonth(month, 5)),
+        repeat: { kind: 'recurring', unit: 'year', interval: 1 },
+      },
+    },
+    {
+      id: 'category_maintenance',
+      groupId: 'group_true',
+      name: 'Maintenance',
+      target: {
+        type: 'by-date',
+        amount: 90_000,
+        targetDate: monthEndDate(nextMonth),
+        repeat: { kind: 'recurring', unit: 'month', interval: 3 },
+      },
+    },
+    {
+      id: 'category_fun',
+      groupId: 'group_fun',
+      name: 'Fun money',
+      target: {
+        type: 'monthly-savings',
+        amount: 18_000,
+        schedule: { kind: 'recurring', unit: 'month', interval: 1, anchorDate: `${previousMonth}-01` },
+      },
+    },
+    {
+      id: 'category_gifts',
+      groupId: 'group_fun',
+      name: 'Gifts',
+      target: {
+        type: 'monthly-savings',
+        amount: 10_000,
+        schedule: {
+          kind: 'custom',
+          dates: [`${month}-10`, `${shiftMonth(month, 2)}-18`, `${shiftMonth(month, 5)}-24`],
+        },
+      },
+    },
   ]
 
   const accounts: Account[] = [
-    { id: 'account_checking', name: 'Everyday checking', type: 'cash', onBudget: true },
-    { id: 'account_savings', name: 'High-yield savings', type: 'cash', onBudget: true },
-    { id: 'account_card', name: 'Daily credit card', type: 'credit', onBudget: true },
+    { id: 'account_everyday', name: 'Everyday money' },
+    { id: 'account_savings', name: 'Savings' },
   ]
 
   const transactions: Transaction[] = [
-    { id: 'tx_open_checking', accountId: 'account_checking', date: `${previousMonth}-02`, payee: 'Opening balance', memo: '', categoryId: null, amount: 285_000, cleared: true },
-    { id: 'tx_open_savings', accountId: 'account_savings', date: `${previousMonth}-02`, payee: 'Opening balance', memo: '', categoryId: null, amount: 240_000, cleared: true },
-    { id: 'tx_payday', accountId: 'account_checking', date: dateOffset(-5), payee: 'Acme Studio', memo: 'Salary', categoryId: null, amount: 320_000, cleared: true },
-    { id: 'tx_rent', accountId: 'account_checking', date: dateOffset(-4), payee: 'Home Properties', memo: 'Monthly rent', categoryId: 'category_rent', amount: -125_000, cleared: true },
-    { id: 'tx_market', accountId: 'account_card', date: dateOffset(-2), payee: 'Fresh Market', memo: 'Weekly shop', categoryId: 'category_groceries', amount: -8_640, cleared: true },
-    { id: 'tx_train', accountId: 'account_card', date: dateOffset(-1), payee: 'Metro', memo: '', categoryId: 'category_transport', amount: -2_450, cleared: false },
-    { id: 'tx_cinema', accountId: 'account_card', date: todayKey(), payee: 'Cinema House', memo: 'Friday night', categoryId: 'category_fun', amount: -3_800, cleared: false },
+    { id: 'tx_open_everyday', accountId: 'account_everyday', date: `${previousMonth}-02`, payee: 'Opening balance', memo: '', categoryId: null, amount: 285_000 },
+    { id: 'tx_open_savings', accountId: 'account_savings', date: `${previousMonth}-02`, payee: 'Opening balance', memo: '', categoryId: null, amount: 240_000 },
+    { id: 'tx_payday', accountId: 'account_everyday', date: dateOffset(-5), payee: 'Acme Studio', memo: 'Salary', categoryId: null, amount: 320_000 },
+    { id: 'tx_rent', accountId: 'account_everyday', date: dateOffset(-4), payee: 'Home Properties', memo: 'Monthly rent', categoryId: 'category_rent', amount: -125_000 },
+    { id: 'tx_market', accountId: 'account_everyday', date: dateOffset(-2), payee: 'Fresh Market', memo: 'Weekly shop', categoryId: 'category_groceries', amount: -8_640 },
+    { id: 'tx_train', accountId: 'account_everyday', date: dateOffset(-1), payee: 'Metro', memo: '', categoryId: 'category_transport', amount: -2_450 },
+    { id: 'tx_cinema', accountId: 'account_everyday', date: todayKey(), payee: 'Cinema House', memo: 'Friday night', categoryId: 'category_fun', amount: -3_800 },
   ]
 
   return {
-    version: 2,
+    version: 3,
     name: 'Demo budget',
     currency: 'USD',
     activeMonth: month,
@@ -550,12 +1203,11 @@ export const createDemoState = (): BudgetState => {
         month: previousMonth,
         assignments: {
           category_rent: 125_000,
-          category_groceries: 40_000,
-          category_transport: 12_000,
-          category_medical: 8_000,
-          category_annual: 6_000,
-          category_fun: 15_000,
-          category_travel: 20_000,
+          category_groceries: 44_000,
+          category_transport: 15_000,
+          category_medical: 20_000,
+          category_maintenance: 20_000,
+          category_fun: 18_000,
         },
       },
       [month]: {
@@ -563,14 +1215,11 @@ export const createDemoState = (): BudgetState => {
         assignments: {
           category_rent: 125_000,
           category_internet: 6_500,
-          category_groceries: 45_000,
-          category_transport: 15_000,
-          category_medical: 10_000,
-          category_annual: 6_000,
-          category_repairs: 15_000,
-          category_fun: 18_000,
-          category_gifts: 8_000,
-          category_travel: 25_000,
+          category_groceries: 22_000,
+          category_transport: 7_500,
+          category_medical: 12_000,
+          category_maintenance: 20_000,
+          category_fun: 8_000,
         },
       },
     },

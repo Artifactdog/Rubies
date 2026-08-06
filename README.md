@@ -1,37 +1,67 @@
 # Rubies Budget
 
-Rubies is a self-hosted, local-first budget management PWA inspired by zero-based envelope budgeting and Obsidian-style workspace principles: calm density, keyboard-friendly navigation, offline resilience, and user-owned data.
+Rubies is a self-hosted, local-first envelope budgeting PWA with a calm, information-dense workspace, offline support, and user-owned data.
 
 > Rubies is an independent project. It is not affiliated with or endorsed by YNAB or Obsidian.
 
-## What works in 2026.08.06.0
+## What works in 2026.08.06.1
 
 ### Budgeting
 
-- Monthly zero-based assignments with category balance rollover
+- Monthly zero-based assignments with positive category balance rollover
+- Cash overspending resets at month end and reduces the next month’s Ready to Assign
 - Editable category names, groups, notes, and targets
 - Three target behaviors:
-  - Refill a category balance on its schedule
-  - Assign a fixed amount on its schedule
-  - Save a total amount by a deadline
-- Weekly, monthly, yearly, and every-N-period schedules
-- Exact first due dates, including weekday/day-of-month alignment
-- Repeating deadline goals every N months or years
-- Custom irregular occurrence dates and custom future deadlines
-- Monthly target calculations automatically count every scheduled occurrence
+  - Set aside another amount on each scheduled date
+  - Refill an available balance on each scheduled date
+  - Build a total balance by a deadline
+- Weekly, monthly, yearly, every-N-period, repeating-deadline, and irregular custom schedules
+- Exact first due dates and custom future deadlines
+- Target snoozing for individual budget months
+- A clear target breakdown for every category:
+  - required this month
+  - assigned this month
+  - left to assign this month
+  - overall amount left for deadline goals
+- Future-month recommendations recalculate as the deadline approaches
 - One-click target funding and target auto-assignment
 - Move money between categories or back to Ready to Assign
-- Direct assignment editing with immediate budget recalculation
+- Large mouse-friendly allocation sliders plus exact keyboard entry
 - Editable and collapsible category groups
 - Category archiving without destroying transaction history
+- A **Today** button and `T` keyboard shortcut to return to the current month
+
+### nYNAB import
+
+Rubies accepts nYNAB API-style JSON plan exports in addition to Rubies JSON backups.
+
+The importer preserves:
+
+- plan name and ISO currency
+- accounts and current account balances
+- category groups, categories, notes, hidden state, and archived state
+- historical and future month assignments
+- transactions, memos, payee names, categories, income, and transfers
+- monthly, every-N-month, annual, and one-time deadline targets
+- goal target amounts, due days, target months, and snoozed months
+- split transactions by flattening their subtransactions into normal Rubies entries
+
+nYNAB milliunits are converted to Rubies minor currency units. Internal Ready to Assign, Uncategorized, and credit-card payment categories are excluded. Scheduled transactions are reported as an import warning because Rubies does not schedule transactions yet.
+
+Importing replaces the current budget only after an explicit confirmation.
 
 ### Accounts and transactions
 
-- Add and edit cash, credit, and tracking accounts
-- Opening balances
-- Add, edit, and delete income or expense transactions
-- Account filtering and live balances
-- Cleared and uncleared transaction state
+Rubies deliberately uses one account model:
+
+- no cash/credit/tracking account types
+- no credit-card payment workflow
+- no cleared/uncleared or reconciliation state
+- add, rename, annotate, close, and reopen accounts
+- add, edit, and delete income or expense transactions
+- account filtering and live balances
+
+Existing Rubies version-2 budgets migrate automatically to this simpler model when unlocked or imported.
 
 ### Access and data protection
 
@@ -41,21 +71,21 @@ Rubies is a self-hosted, local-first budget management PWA inspired by zero-base
 - Automatic lock after 15 minutes of inactivity
 - Manual lock and password change
 - One-click temporary demo mode with realistic pre-filled data
-- Human-readable JSON export and import
+- Human-readable JSON export
 
 ### App and deployment
 
-- Responsive desktop and mobile layouts
+- Larger responsive desktop and mobile layouts
 - Installable PWA with offline app-shell caching
 - Docker and Docker Compose deployment
 - CSP and browser hardening headers in the bundled Nginx configuration
-- Keyboard shortcuts: `P` Plan, `A` Accounts, `N` New transaction, `M` Move money
+- Keyboard shortcuts: `P` Plan, `A` Accounts, `N` New transaction, `M` Move money, `T` Today
 
 ## Security model
 
 The current version is a static, single-device PWA. The saved budget is encrypted before it is written to browser storage. The password is kept only in the unlocked page's memory and is not stored. Locking or closing the page removes access to decrypted data.
 
-This protects budget data at rest in the browser, but it is not server-side user authentication. The HTML and JavaScript application shell remains publicly downloadable from the web server. For network-level access control, place Rubies behind HTTPS and an authenticating reverse proxy such as Authelia, Authentik, OAuth2 Proxy, or your server platform's access-control layer.
+This protects budget data at rest in the browser, but it is not server-side user authentication. The HTML and JavaScript application shell remains publicly downloadable from the web server. For network-level access control, place Rubies behind HTTPS and an authenticating reverse proxy.
 
 Export files are intentionally portable JSON and are **not encrypted**. Store them securely.
 
@@ -76,7 +106,7 @@ docker compose up --build
 
 Open `http://localhost:8080`.
 
-For PWA installation outside localhost, serve Rubies through HTTPS. A reverse proxy such as Caddy, Traefik, or Nginx can terminate TLS in front of the container.
+For PWA installation outside localhost, serve Rubies through HTTPS.
 
 ## Build and verify
 
@@ -90,7 +120,7 @@ docker build -t rubies-budget .
 
 ## Storage and recovery
 
-The encrypted vault is stored in browser `localStorage` on the current device and browser profile. There is no password recovery because Rubies never stores the password. Keep regular exports until the optional self-hosted sync service is implemented.
+The encrypted vault is stored in browser `localStorage` on the current device and browser profile. There is no password recovery because Rubies never stores the password. Keep regular exports.
 
 Clearing browser site data deletes the local vault. Changing browsers or devices does not transfer it automatically.
 
@@ -100,13 +130,13 @@ Rubies releases use `YYYY.MM.DD.N`. The first release made on a date uses iterat
 
 ## Roadmap
 
-1. **Current 2026.08.06.0 — useful local budgeting**
-   - Protected local vault, editable categories, full target scheduling, money movement, accounts, editable transactions, demo mode
+1. **Current 2026.08.06.1 — practical local budgeting**
+   - Protected vault, nYNAB import, month-aware targets, simple accounts, editable transactions, money movement, and demo mode
 2. **Durable local data**
-   - IndexedDB repository, migrations, undo history, scheduled transactions, reconciliation, split transactions
-3. **Full nYNAB-style behavior**
-   - Credit-card payment categories, cash overspending treatment, payee rules, CSV import, bulk editing
+   - IndexedDB repository, migrations, undo history, and safer large-budget persistence
+3. **Transaction workflow**
+   - Scheduled transactions, native split editing, payee rules, CSV import, and bulk editing
 4. **Optional self-hosted sync and authentication**
-   - API service, PostgreSQL, server sessions, multi-device encrypted replication, conflict handling
+   - API service, PostgreSQL, server sessions, multi-device encrypted replication, and conflict handling
 5. **Reflection and collaboration**
-   - Spending and net-worth reports, household sharing, permissions, audit log, command palette
+   - Spending reports, net-worth reports, household sharing, permissions, and audit history
