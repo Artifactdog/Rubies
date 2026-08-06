@@ -1,0 +1,32 @@
+name: Apply release 2026.8.6.3
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'release/2026.8.6.3'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Apply source payload
+        shell: bash
+        run: |
+          cat .release-r3/part-* > /tmp/rubies-release.b64
+          echo 'faebfdb0da5fdbecd9922d46ec110f54cc05a9df5a6de99e79bde72c41abe64e  /tmp/rubies-release.b64' | sha256sum -c -
+          base64 --decode /tmp/rubies-release.b64 > /tmp/rubies-release.tar.gz
+          echo '6c464871ee2d5527b585aac9736971f9201e7c18158c321944e22b6014e5ad7c  /tmp/rubies-release.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/rubies-release.tar.gz -C .
+          rm -rf .release-r3
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Apply release 2026.8.6.3 source'
+          git push origin HEAD:${{ github.head_ref }}
