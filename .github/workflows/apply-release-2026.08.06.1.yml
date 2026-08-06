@@ -23,7 +23,11 @@ jobs:
             echo "Release payload already applied."
             exit 0
           fi
-          cat .release/part-* | base64 --decode > /tmp/rubies-release.tar.gz
+          sha256sum .release/part-*
+          cat .release/part-* > /tmp/rubies-release.b64
+          sha256sum /tmp/rubies-release.b64
+          base64 --decode /tmp/rubies-release.b64 > /tmp/rubies-release.tar.gz
+          sha256sum /tmp/rubies-release.tar.gz
           tar -xzf /tmp/rubies-release.tar.gz -C .
           rm -rf .release
           git config user.name "github-actions[bot]"
