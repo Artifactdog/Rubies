@@ -2,7 +2,7 @@ name: Apply Rubies v0.2
 
 on:
   pull_request:
-    types: [opened]
+    types: [opened, reopened]
     branches: [main]
 
 permissions:
@@ -22,6 +22,7 @@ jobs:
         run: |
           cat .bootstrap/rubies.zip.b64.* | base64 --decode > /tmp/rubies-v0.2.0.zip
           unzip -oq /tmp/rubies-v0.2.0.zip -d .
+          git checkout origin/main -- .github/workflows/ci.yml
           rm -rf .bootstrap .github/workflows/bootstrap-v0.2.yml
       - name: Commit v0.2 source
         shell: bash
