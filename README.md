@@ -2,23 +2,57 @@
 
 Rubies is a self-hosted, local-first budget management PWA inspired by zero-based envelope budgeting and Obsidian-style workspace principles: calm density, keyboard-friendly navigation, offline resilience, and user-owned data.
 
-This repository currently contains the first functional vertical slice. It supports monthly envelope assignments, category rollover, account registers, expenses and inflows, installable PWA behavior, JSON backup/restore, and Docker deployment.
-
 > Rubies is an independent project. It is not affiliated with or endorsed by YNAB or Obsidian.
 
-## What works
+## What works in v0.2
 
-- Give available cash a job through monthly category assignments
-- Automatically roll positive or negative category balances into later months
-- Record categorized expenses and uncategorized inflows
-- View all transactions or filter by account
-- Track monthly targets with funded, underfunded, and overspent states
-- Persist the entire budget locally in the browser
-- Export and import a human-readable JSON backup
-- Install the app to a phone home screen or desktop app launcher
-- Use the app offline after it has been loaded once
-- Deploy as one static Docker container
-- Keyboard shortcuts: `P` for Plan, `A` for Accounts, `N` for New transaction
+### Budgeting
+
+- Monthly zero-based assignments with category balance rollover
+- Editable category names, groups, notes, and targets
+- Three target types:
+  - Refill a category balance to an amount each month
+  - Assign a fixed amount every month
+  - Save a total amount by a target month
+- One-click target funding and target auto-assignment
+- Move money between categories or back to Ready to Assign
+- Direct assignment editing with immediate budget recalculation
+- Editable and collapsible category groups
+- Category archiving without destroying transaction history
+
+### Accounts and transactions
+
+- Add and edit cash, credit, and tracking accounts
+- Opening balances
+- Add, edit, and delete income or expense transactions
+- Account filtering and live balances
+- Cleared and uncleared transaction state
+
+### Access and data protection
+
+- Mandatory password setup before creating a persistent budget
+- Password-gated unlock screen on every new browser session
+- PBKDF2-SHA-256 password derivation and AES-256-GCM encrypted local vault
+- Automatic lock after 15 minutes of inactivity
+- Manual lock and password change
+- One-click temporary demo mode with realistic pre-filled data
+- Human-readable JSON export and import
+
+### App and deployment
+
+- Responsive desktop and mobile layouts
+- Installable PWA with offline app-shell caching
+- Docker and Docker Compose deployment
+- CSP and browser hardening headers in the bundled Nginx configuration
+- Keyboard shortcuts: `P` Plan, `A` Accounts, `N` New transaction, `M` Move money
+
+## Security model
+
+The current version is a static, single-device PWA. The saved budget is encrypted before it is written to browser storage. The password is kept only in the unlocked page's memory and is not stored. Locking or closing the page removes access to decrypted data.
+
+This protects budget data at rest in the browser, but it is not server-side user authentication. The HTML and JavaScript application shell remains publicly downloadable from the web server. For network-level access control, place Rubies behind HTTPS and an authenticating reverse proxy such as Authelia, Authentik, OAuth2 Proxy, or your server platform's access-control layer.
+
+Export files are intentionally portable JSON and are **not encrypted**. Store them securely.
 
 ## Run locally
 
@@ -37,7 +71,7 @@ docker compose up --build
 
 Open `http://localhost:8080`.
 
-For browser-promoted PWA installation outside localhost, serve Rubies through HTTPS. A reverse proxy such as Caddy, Traefik, or Nginx can terminate TLS in front of the container.
+For PWA installation outside localhost, serve Rubies through HTTPS. A reverse proxy such as Caddy, Traefik, or Nginx can terminate TLS in front of the container.
 
 ## Build and verify
 
@@ -48,30 +82,21 @@ npm run build
 docker build -t rubies-budget .
 ```
 
-## Current storage model
+## Storage and recovery
 
-The current release stores one budget in browser `localStorage`. This gives the first version immediate local ownership, offline behavior, and zero server configuration. Export regularly while the sync layer is under development.
+The encrypted vault is stored in browser `localStorage` on the current device and browser profile. There is no password recovery because Rubies never stores the password. Keep regular exports until the optional self-hosted sync service is implemented.
 
-The planned persistence architecture is local-first IndexedDB plus an optional self-hosted sync API. See [docs/architecture.md](docs/architecture.md).
+Clearing browser site data deletes the local vault. Changing browsers or devices does not transfer it automatically.
 
-## Product roadmap
+## Roadmap
 
-1. **Foundation — current slice**
-   - Zero-based plan, account register, rollover, PWA, local backup, Docker image
+1. **Current v0.2 — useful local budgeting**
+   - Protected local vault, categories, targets, money movement, accounts, editable transactions, demo mode
 2. **Durable local data**
-   - IndexedDB repository, schema migrations, undo history, reconciliation, scheduled transactions
-3. **Self-hosted sync**
-   - Optional API, PostgreSQL, encrypted sessions, multi-device replication, conflict handling
-4. **Full budgeting workflow**
-   - Credit-card payment categories, loans, targets, auto-assign, payee rules, split transactions, CSV import
+   - IndexedDB repository, migrations, undo history, scheduled transactions, reconciliation, split transactions
+3. **Full nYNAB-style behavior**
+   - Credit-card payment categories, cash overspending treatment, target recurrence options, payee rules, CSV import, bulk editing
+4. **Optional self-hosted sync and authentication**
+   - API service, PostgreSQL, server sessions, multi-device encrypted replication, conflict handling
 5. **Reflection and collaboration**
-   - Spending and net-worth reports, household sharing, permissions, audit log, accessible command palette
-
-## Design principles
-
-- **Plan only money that exists.** Future income is not available until recorded.
-- **Every number is inspectable.** Budget totals derive from assignments and transaction ledgers.
-- **Local is the default.** The app works without an account or external service.
-- **Export is a feature, not an escape hatch.** Data remains portable and understandable.
-- **Dense, calm, keyboard-friendly UI.** Desktop power without making mobile feel secondary.
-- **Progressive enhancement.** The website remains usable while PWA installation adds app-like behavior.
+   - Spending and net-worth reports, household sharing, permissions, audit log, command palette
