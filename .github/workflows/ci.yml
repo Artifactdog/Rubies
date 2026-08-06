@@ -6,37 +6,30 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply-release:
-    if: github.event_name == 'pull_request' && github.head_ref == 'release/2026.8.6.3'
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out release branch
+      - name: Check out source
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         shell: bash
         run: |
           git init .
           git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git fetch --depth=1 origin "refs/heads/${GITHUB_HEAD_REF}:refs/remotes/origin/${GITHUB_HEAD_REF}"
-          git fetch --depth=1 origin "refs/heads/main:refs/remotes/origin/main"
-          git checkout -B "${GITHUB_HEAD_REF}" "refs/remotes/origin/${GITHUB_HEAD_REF}"
-      - name: Apply source payload
-        shell: bash
-        run: |
-          cat .release-r3/part-* > /tmp/rubies-release.b64
-          echo 'faebfdb0da5fdbecd9922d46ec110f54cc05a9df5a6de99e79bde72c41abe64e  /tmp/rubies-release.b64' | sha256sum -c -
-          base64 --decode /tmp/rubies-release.b64 > /tmp/rubies-release.tar.gz
-          echo '6c464871ee2d5527b585aac9736971f9201e7c18158c321944e22b6014e5ad7c  /tmp/rubies-release.tar.gz' | sha256sum -c -
-          tar -xzf /tmp/rubies-release.tar.gz -C .
-          rm -rf .release-r3
-          rm -f .github/workflows/apply-release-2026.8.6.3.yml
-          rm -f .github/workflows/apply-source-2026.8.6.3.yml
-          git checkout refs/remotes/origin/main -- .github/workflows/ci.yml
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
-          git commit -m 'Apply release 2026.8.6.3 source'
-          git push origin HEAD:${GITHUB_HEAD_REF}
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            git fetch --depth=1 origin "refs/pull/${PR_NUMBER}/merge"
+          else
+            git fetch --depth=1 origin "${GITHUB_SHA}"
+          fi
+          git checkout --detach FETCH_HEAD
+      - run: node --version
+      - run: npm --version
+      - run: npm install --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: docker build -t rubies-budget:ci .
