@@ -11,6 +11,7 @@ import {
 } from 'react'
 import {
   type Account,
+  type AllocationEvent,
   type BudgetState,
   type Category,
   type CategoryTarget,
@@ -89,6 +90,9 @@ const ChevronIcon = ({ direction }: { direction: 'left' | 'right' }) => (
 )
 const CalendarIcon = () => <Icon><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/></Icon>
 const SnoozeIcon = () => <Icon><path d="M7 7h7l-7 7h7M15 4h5l-5 5h5"/></Icon>
+const HistoryIcon = () => <Icon><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></Icon>
+const UndoIcon = () => <Icon><path d="M9 7 4 12l5 5"/><path d="M5 12h8a6 6 0 0 1 6 6"/></Icon>
+const KeyboardIcon = () => <Icon><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h7M17 14h.01"/></Icon>
 
 const RubyMark = () => <div className="ruby-mark" aria-hidden="true"><span /></div>
 
@@ -253,105 +257,158 @@ const AccessGate = ({ onOpen }: { onOpen: (session: Session) => void }) => {
   )
 }
 
-const AllocationControl = ({
+const NormalizedMoneySlider = ({
   value,
-  required,
-  left,
+  max,
   currency,
   onChange,
 }: {
   value: number
-  required: number
-  left: number
+  max: number
   currency: string
   onChange: (value: number) => void
 }) => {
-  const [draft, setDraft] = useState((value / 100).toFixed(2))
-  useEffect(() => setDraft((value / 100).toFixed(2)), [value])
-
-  const sliderMax = Math.max(100_000, Math.ceil(Math.max(required, Math.abs(value), 1) * 1.35 / 100) * 100)
-  const sliderValue = Math.max(0, Math.min(sliderMax, value))
-  const percent = sliderMax === 0 ? 0 : (sliderValue / sliderMax) * 100
-  const step = sliderMax >= 5_000_000 ? 5_000 : sliderMax >= 1_000_000 ? 1_000 : 100
-  const nudge = Math.max(step, Math.ceil(sliderMax / 20 / step) * step)
-
-  const commitDraft = () => {
-    const parsed = parseMoney(draft)
-    setDraft((parsed / 100).toFixed(2))
-    onChange(parsed)
-  }
+  const safeMax = Math.max(1, Math.round(max))
+  const clamped = Math.max(0, Math.min(safeMax, value))
+  const position = Math.round((clamped / safeMax) * 1000)
+  const fill = `${position / 10}%`
+  const moneyStep = safeMax >= 10_000_000
+    ? 10_000
+    : safeMax >= 1_000_000
+      ? 1_000
+      : safeMax >= 100_000
+        ? 100
+        : 1
 
   return (
-    <div className="allocation-control">
-      <div className="allocation-input-row">
-        <button
-          className="nudge-button"
-          type="button"
-          onClick={() => onChange(value - nudge)}
-          aria-label={`Decrease allocation by ${formatMoney(nudge, currency)}`}
-        >−</button>
-        <div className="money-field">
-          <span>{new Intl.NumberFormat(undefined, { style: 'currency', currency, currencyDisplay: 'narrowSymbol' }).formatToParts(0).find((part) => part.type === 'currency')?.value}</span>
-          <input
-            inputMode="decimal"
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onBlur={commitDraft}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault()
-                commitDraft()
-                event.currentTarget.blur()
-              }
-            }}
-            aria-label="Assigned this month"
-          />
-        </div>
-        <button
-          className="nudge-button"
-          type="button"
-          onClick={() => onChange(value + nudge)}
-          aria-label={`Increase allocation by ${formatMoney(nudge, currency)}`}
-        >+</button>
-        {left > 0 && (
-          <button className="fund-button" type="button" onClick={() => onChange(value + left)}>
-            Fund left
-          </button>
-        )}
-      </div>
+    <div className="normalized-slider">
       <input
         className="money-slider"
         type="range"
         min="0"
-        max={sliderMax}
-        step={step}
-        value={sliderValue}
-        onChange={(event) => onChange(Number(event.target.value))}
-        style={{ '--slider-fill': `${percent}%` } as CSSProperties}
-        aria-label="Adjust assigned amount with slider"
+        max="1000"
+        step="1"
+        value={position}
+        onChange={(event) => {
+          const raw = (Number(event.target.value) / 1000) * safeMax
+          onChange(Math.round(raw / moneyStep) * moneyStep)
+        }}
+        style={{ '--slider-fill': fill } as CSSProperties}
+        aria-label="Adjust amount with slider"
       />
       <div className="allocation-scale">
         <span>{formatMoney(0, currency)}</span>
-        <span>{formatMoney(sliderMax, currency)}</span>
+        <span>{formatMoney(safeMax, currency)}</span>
       </div>
     </div>
+  )
+}
+
+const AssignmentDialog = ({
+  state,
+  category,
+  onClose,
+  onSave,
+}: {
+  state: BudgetState
+  category: Category
+  onClose: () => void
+  onSave: (amount: number) => void
+}) => {
+  const summary = getCategorySummary(state, category, state.activeMonth)
+  const target = summary.target
+  const [draft, setDraft] = useState(summary.assigned)
+  const [text, setText] = useState((summary.assigned / 100).toFixed(2))
+  const sliderMax = Math.max(
+    100_000,
+    Math.ceil(Math.max(
+      Math.abs(summary.assigned),
+      target?.requiredThisMonth ?? 0,
+      summary.assigned + (target?.leftToAssign ?? 0),
+    ) * 1.3 / 100) * 100,
+  )
+
+  const updateDraft = (amount: number) => {
+    const rounded = Math.round(amount)
+    setDraft(rounded)
+    setText((rounded / 100).toFixed(2))
+  }
+
+  const parseText = () => {
+    const parsed = parseMoney(text)
+    setDraft(parsed)
+    setText((parsed / 100).toFixed(2))
+    return parsed
+  }
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    onSave(parseText())
+  }
+
+  return (
+    <DialogFrame
+      title={`Assign money · ${category.name}`}
+      subtitle={`Changes apply to ${monthLabel(state.activeMonth)} only after you save.`}
+      onClose={onClose}
+    >
+      <form onSubmit={submit} className="assignment-dialog-form">
+        <div className="assignment-context">
+          <div><span>Currently assigned</span><strong>{formatMoney(summary.assigned, state.currency)}</strong></div>
+          <div><span>Required this month</span><strong>{formatMoney(target?.requiredThisMonth ?? 0, state.currency)}</strong></div>
+          <div><span>Left to assign</span><strong>{formatMoney(target?.leftToAssign ?? 0, state.currency)}</strong></div>
+        </div>
+        <label className="standalone-label">New assigned amount
+          <input
+            inputMode="decimal"
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            onBlur={parseText}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') onClose()
+            }}
+            autoFocus
+          />
+        </label>
+        <NormalizedMoneySlider
+          value={draft}
+          max={sliderMax}
+          currency={state.currency}
+          onChange={updateDraft}
+        />
+        <div className="assignment-quick-actions">
+          <button type="button" className="secondary-button compact" onClick={() => updateDraft(0)}>Clear</button>
+          {target && target.leftToAssign > 0 && (
+            <button type="button" className="secondary-button compact" onClick={() => updateDraft(summary.assigned + target.leftToAssign)}>
+              Fund remaining {formatMoney(target.leftToAssign, state.currency)}
+            </button>
+          )}
+        </div>
+        <footer className="dialog-actions">
+          <button type="button" className="secondary-button" onClick={onClose}>Cancel</button>
+          <button type="submit" className="primary-button">Save assignment <kbd>Enter</kbd></button>
+        </footer>
+      </form>
+    </DialogFrame>
   )
 }
 
 const CategoryRow = ({
   state,
   category,
-  onAssignmentChange,
+  onEditAssignment,
   onEdit,
   onMove,
   onToggleSnooze,
+  onOpenHistory,
 }: {
   state: BudgetState
   category: Category
-  onAssignmentChange: (amount: number) => void
+  onEditAssignment: () => void
   onEdit: () => void
   onMove: () => void
   onToggleSnooze: () => void
+  onOpenHistory: () => void
 }) => {
   const summary = getCategorySummary(state, category, state.activeMonth)
   const target = summary.target
@@ -360,64 +417,134 @@ const CategoryRow = ({
   return (
     <article className={`category-row status-${summary.status}`}>
       <div className="category-identity">
-        <div className="category-title-line">
-          <button className="category-name" onClick={onEdit}>{category.name}</button>
-          <div className="row-actions">
-            {target && (
-              <button className={`mini-action${target.snoozed ? ' active' : ''}`} onClick={onToggleSnooze} title={target.snoozed ? 'Resume target' : 'Snooze target this month'}>
-                <SnoozeIcon />
-              </button>
-            )}
-            <button className="mini-action" onClick={onMove} title="Move money"><MoveIcon /></button>
-            <button className="mini-action" onClick={onEdit} title="Edit category"><EditIcon /></button>
-          </div>
-        </div>
+        <button className="category-name" onClick={onEdit}>{category.name}</button>
         <p className="target-description">{target?.label ?? category.note ?? 'No target set'}</p>
         {target && (
-          <div className="progress-wrap">
+          <div className="progress-wrap" aria-label={`${progress}% funded`}>
             <div className="progress-track"><span style={{ width: `${progress}%` }} /></div>
-            <span>{progress}%</span>
           </div>
         )}
       </div>
 
-      <div className="target-month-card">
+      <div className="target-compact-cell">
         {target ? (
           <>
-            <div><span>Required this month</span><strong>{formatMoney(target.requiredThisMonth, state.currency)}</strong></div>
-            <div><span>Left to assign</span><strong className={target.leftToAssign > 0 ? 'warning-value' : 'good-value'}>{formatMoney(target.leftToAssign, state.currency)}</strong></div>
-            {target.overallLeft !== target.leftToAssign && (
-              <div className="overall-left"><span>Overall left</span><strong>{formatMoney(target.overallLeft, state.currency)}</strong></div>
-            )}
+            <span>Need {formatMoney(target.requiredThisMonth, state.currency)}</span>
+            <strong className={target.leftToAssign > 0 ? 'warning-value' : 'good-value'}>
+              {target.leftToAssign > 0 ? `${formatMoney(target.leftToAssign, state.currency)} left` : 'Funded'}
+            </strong>
           </>
         ) : (
-          <div className="no-target"><TargetIcon /><span>No target</span></div>
+          <span className="muted-value">No target</span>
         )}
       </div>
 
-      <div className="assigned-cell">
-        <span className="cell-label">Assigned this month</span>
-        <AllocationControl
-          value={summary.assigned}
-          required={target?.requiredThisMonth ?? Math.max(0, summary.assigned)}
-          left={target?.leftToAssign ?? 0}
-          currency={state.currency}
-          onChange={onAssignmentChange}
-        />
-      </div>
+      <button className="assigned-value-button" onClick={onEditAssignment} title="Edit assignment">
+        <span>Assigned</span>
+        <strong>{formatMoney(summary.assigned, state.currency)}</strong>
+      </button>
 
-      <div className="money-stat">
+      <div className="money-stat compact-stat">
         <span>Activity</span>
-        <strong className={summary.activity < 0 ? 'negative-value' : ''}>{formatMoney(summary.activity, state.currency)}</strong>
+        <strong className={summary.activity < 0 ? 'negative-value' : summary.activity > 0 ? 'good-value' : ''}>
+          {formatMoney(summary.activity, state.currency)}
+        </strong>
       </div>
 
-      <div className={`available-card ${summary.available < 0 ? 'negative' : summary.status === 'underfunded' ? 'warning' : 'positive'}`}>
+      <div className={`available-card compact-stat ${summary.available < 0 ? 'negative' : summary.status === 'underfunded' ? 'warning' : 'positive'}`}>
         <span>Available</span>
         <strong>{formatMoney(summary.available, state.currency)}</strong>
+      </div>
+
+      <div className="row-actions">
+        <button className="mini-action" onClick={onOpenHistory} title="Allocation history"><HistoryIcon /></button>
+        {target && (
+          <button className={`mini-action${target.snoozed ? ' active' : ''}`} onClick={onToggleSnooze} title={target.snoozed ? 'Resume target' : 'Snooze target this month'}>
+            <SnoozeIcon />
+          </button>
+        )}
+        <button className="mini-action" onClick={onMove} title="Move money"><MoveIcon /></button>
+        <button className="mini-action" onClick={onEdit} title="Edit category"><EditIcon /></button>
       </div>
     </article>
   )
 }
+
+const AllocationHistoryDialog = ({
+  state,
+  categoryId,
+  onClose,
+}: {
+  state: BudgetState
+  categoryId?: string
+  onClose: () => void
+}) => {
+  const categoryById = new Map(state.categories.map((category) => [category.id, category.name]))
+  const categoryName = categoryId ? categoryById.get(categoryId) : undefined
+  const events = [...state.allocationEvents]
+    .filter((event) => !categoryId || event.changes.some((change) => change.categoryId === categoryId))
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+
+  const changeName = (change: AllocationEvent['changes'][number]) =>
+    change.categoryId ? categoryById.get(change.categoryId) ?? 'Archived category' : 'Ready to Assign'
+
+  return (
+    <DialogFrame
+      title={categoryName ? `${categoryName} allocation history` : 'Allocation history'}
+      subtitle={state.importSource?.kind === 'nynab'
+        ? 'Rubies records exact new actions. Imported entries are month-level assignment snapshots because nYNAB does not export the original click-by-click allocation log.'
+        : 'Every confirmed assignment, move, and auto-assign action is recorded here.'}
+      onClose={onClose}
+      wide
+    >
+      <div className="allocation-history-list">
+        {events.map((event) => (
+          <article className="allocation-history-event" key={event.id}>
+            <header>
+              <div><strong>{event.label}</strong><span>{monthLabel(event.month)}</span></div>
+              <time dateTime={event.createdAt}>{new Date(event.createdAt).toLocaleString()}</time>
+            </header>
+            <div className="allocation-change-list">
+              {event.changes
+                .filter((change) => !categoryId || change.categoryId === categoryId)
+                .map((change, index) => (
+                  <div className="allocation-change" key={`${event.id}-${index}`}>
+                    <span>{changeName(change)}</span>
+                    <strong className={change.delta > 0 ? 'good-value' : 'negative-value'}>
+                      {change.delta > 0 ? '+' : ''}{formatMoney(change.delta, state.currency)}
+                    </strong>
+                    <small>{formatMoney(change.before, state.currency)} → {formatMoney(change.after, state.currency)}</small>
+                  </div>
+                ))}
+            </div>
+          </article>
+        ))}
+        {events.length === 0 && (
+          <div className="empty-history">
+            <HistoryIcon />
+            <strong>No allocation changes yet</strong>
+            <span>Confirmed assignments, money moves, and auto-assign actions will appear here.</span>
+          </div>
+        )}
+      </div>
+    </DialogFrame>
+  )
+}
+
+const ShortcutsDialog = ({ onClose }: { onClose: () => void }) => (
+  <DialogFrame title="Keyboard shortcuts" subtitle="Shortcuts only run when you are not typing in a field." onClose={onClose}>
+    <div className="shortcut-list">
+      <div><kbd>N</kbd><span>New transaction</span></div>
+      <div><kbd>M</kbd><span>Move money</span></div>
+      <div><kbd>T</kbd><span>Jump to this month</span></div>
+      <div><kbd>P</kbd><span>Open Plan</span></div>
+      <div><kbd>A</kbd><span>Open Accounts</span></div>
+      <div><kbd>Ctrl/⌘ Z</kbd><span>Undo</span></div>
+      <div><kbd>Ctrl/⌘ Shift Z</kbd><span>Redo</span></div>
+      <div><kbd>?</kbd><span>Show this list</span></div>
+    </div>
+  </DialogFrame>
+)
 
 const PlanView = ({
   state,
@@ -425,7 +552,7 @@ const PlanView = ({
   collapsedGroups,
   onToggleGroup,
   onMonthChange,
-  onAssignmentChange,
+  onEditAssignment,
   onEditCategory,
   onAddCategory,
   onEditGroup,
@@ -434,13 +561,16 @@ const PlanView = ({
   onMove,
   onAutoAssign,
   onToggleSnooze,
+  onOpenHistory,
+  onUndo,
+  canUndo,
 }: {
   state: BudgetState
   readyToAssign: number
   collapsedGroups: Set<string>
   onToggleGroup: (groupId: string) => void
   onMonthChange: (month: string) => void
-  onAssignmentChange: (month: string, categoryId: string, amount: number) => void
+  onEditAssignment: (category: Category) => void
   onEditCategory: (category: Category) => void
   onAddCategory: (groupId: string) => void
   onEditGroup: (groupId: string, name: string) => void
@@ -449,6 +579,9 @@ const PlanView = ({
   onMove: (preset?: MovePreset) => void
   onAutoAssign: () => void
   onToggleSnooze: (categoryId: string) => void
+  onOpenHistory: (categoryId?: string) => void
+  onUndo: () => void
+  canUndo: boolean
 }) => {
   const funding = getMonthFundingSummary(state, state.activeMonth)
   const todayMonth = currentMonthKey()
@@ -468,7 +601,7 @@ const PlanView = ({
               onClick={() => onMonthChange(todayMonth)}
               disabled={state.activeMonth === todayMonth}
             >
-              <CalendarIcon />Today
+              <CalendarIcon />Today <kbd>T</kbd>
             </button>
           </div>
           {state.activeMonth !== todayMonth && (
@@ -478,9 +611,11 @@ const PlanView = ({
           )}
         </div>
         <div className="header-actions">
-          <button className="secondary-button" onClick={() => onMove()}><MoveIcon />Move money</button>
+          <button className="secondary-button" onClick={onUndo} disabled={!canUndo}><UndoIcon />Undo <kbd>⌘Z</kbd></button>
+          <button className="secondary-button" onClick={() => onOpenHistory()}><HistoryIcon />History</button>
+          <button className="secondary-button" onClick={() => onMove()}><MoveIcon />Move money <kbd>M</kbd></button>
           <button className="secondary-button" onClick={onAutoAssign} disabled={readyToAssign <= 0 || funding.leftToAssign <= 0}><TargetIcon />Auto-assign</button>
-          <button className="primary-button" onClick={onNewTransaction}><PlusIcon />Transaction</button>
+          <button className="primary-button" onClick={onNewTransaction}><PlusIcon />Transaction <kbd>N</kbd></button>
         </div>
       </header>
 
@@ -510,23 +645,19 @@ const PlanView = ({
       <div className="budget-toolbar">
         <div>
           <strong>Categories</strong>
-          <span>Drag a slider, type an exact amount, or fund the remaining recommendation.</span>
+          <span>Click an Assigned value to edit it. Changes are saved only after confirmation.</span>
         </div>
         <button className="secondary-button" onClick={onNewGroup}><PlusIcon />Group</button>
+      </div>
+
+      <div className="budget-column-headings" aria-hidden="true">
+        <span>Category</span><span>Target</span><span>Assigned</span><span>Activity</span><span>Available</span><span />
       </div>
 
       <div className="category-list">
         {visibleGroups.map((group) => {
           const categories = state.categories.filter((category) => category.groupId === group.id && !category.hidden)
           const collapsed = collapsedGroups.has(group.id)
-          const groupAvailable = categories.reduce(
-            (sum, category) => sum + getCategorySummary(state, category, state.activeMonth).available,
-            0,
-          )
-          const groupLeft = categories.reduce(
-            (sum, category) => sum + (getCategorySummary(state, category, state.activeMonth).target?.leftToAssign ?? 0),
-            0,
-          )
 
           return (
             <section className="category-group" key={group.id}>
@@ -536,9 +667,7 @@ const PlanView = ({
                   <strong>{group.name}</strong>
                   <small>{categories.length} categories</small>
                 </button>
-                <div className="group-totals">
-                  <span>Left {formatMoney(groupLeft, state.currency)}</span>
-                  <span>Available {formatMoney(groupAvailable, state.currency)}</span>
+                <div className="group-actions">
                   <button className="mini-action" onClick={() => onEditGroup(group.id, group.name)} title="Rename group"><EditIcon /></button>
                   <button className="mini-action" onClick={() => onAddCategory(group.id)} title="Add category"><PlusIcon /></button>
                 </div>
@@ -550,10 +679,11 @@ const PlanView = ({
                       key={category.id}
                       state={state}
                       category={category}
-                      onAssignmentChange={(amount) => onAssignmentChange(state.activeMonth, category.id, amount)}
+                      onEditAssignment={() => onEditAssignment(category)}
                       onEdit={() => onEditCategory(category)}
                       onMove={() => onMove({ from: category.id })}
                       onToggleSnooze={() => onToggleSnooze(category.id)}
+                      onOpenHistory={() => onOpenHistory(category.id)}
                     />
                   ))}
                   {categories.length === 0 && (
@@ -602,7 +732,7 @@ const AccountsView = ({
         </div>
         <div className="header-actions">
           <button className="secondary-button" onClick={onNewAccount}><PlusIcon />Account</button>
-          <button className="primary-button" onClick={onNewTransaction}><PlusIcon />Transaction</button>
+          <button className="primary-button" onClick={onNewTransaction}><PlusIcon />Transaction <kbd>N</kbd></button>
         </div>
       </header>
 
@@ -641,19 +771,20 @@ const AccountsView = ({
         </header>
         <div className="transaction-table-wrap">
           <table className="transaction-table">
-            <thead><tr><th>Date</th><th>Payee</th><th>Category</th><th>Account</th><th>Amount</th><th /></tr></thead>
+            <thead><tr><th>Date</th><th>Payee</th><th>Category</th><th>Account</th><th>Flow</th><th>Amount</th><th /></tr></thead>
             <tbody>
               {transactions.map((transaction) => (
-                <tr key={transaction.id}>
+                <tr className={transaction.amount < 0 ? 'expense-row' : 'income-row'} key={transaction.id}>
                   <td>{transaction.date}</td>
                   <td><strong>{transaction.payee}</strong>{transaction.memo && <small>{transaction.memo}</small>}</td>
                   <td>{transaction.categoryId ? categoryById.get(transaction.categoryId) ?? 'Archived category' : 'Ready to assign'}</td>
                   <td>{accountById.get(transaction.accountId)}</td>
-                  <td className={transaction.amount < 0 ? 'negative-value' : 'good-value'}>{formatMoney(transaction.amount, state.currency)}</td>
+                  <td><span className={`flow-badge ${transaction.amount < 0 ? 'expense' : 'income'}`}>{transaction.amount < 0 ? '↓ Expense' : '↑ Income'}</span></td>
+                  <td><strong className={`transaction-amount ${transaction.amount < 0 ? 'negative-value' : 'good-value'}`}>{formatMoney(transaction.amount, state.currency)}</strong></td>
                   <td><button className="mini-action" onClick={() => onEditTransaction(transaction)} aria-label="Edit transaction"><EditIcon /></button></td>
                 </tr>
               ))}
-              {transactions.length === 0 && <tr><td colSpan={6} className="empty-table">No transactions yet.</td></tr>}
+              {transactions.length === 0 && <tr><td colSpan={7} className="empty-table">No transactions yet.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -684,10 +815,20 @@ const TransactionDialog = ({
   const [categoryId, setCategoryId] = useState(transaction?.categoryId ?? state.categories.find((category) => !category.hidden)?.id ?? '')
   const [amount, setAmount] = useState(transaction ? (Math.abs(transaction.amount) / 100).toFixed(2) : '')
   const [memo, setMemo] = useState(transaction?.memo ?? '')
+  const amountMinor = Math.abs(parseMoney(amount))
+  const selectedCategory = state.categories.find((category) => category.id === categoryId)
+  const categoryAvailable = kind === 'expense' && selectedCategory
+    ? getCategorySummary(state, selectedCategory, state.activeMonth).available
+    : 0
+  const accountBalance = accountId ? getAccountBalance(state, accountId) : 0
+  const sliderMax = Math.max(
+    100_000,
+    Math.ceil(Math.max(amountMinor, Math.max(0, categoryAvailable), Math.max(0, accountBalance)) * 1.25 / 100) * 100,
+  )
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
-    const parsed = Math.abs(parseMoney(amount))
+    const parsed = amountMinor
     if (!accountId || !payee.trim() || parsed <= 0) return
     onSubmit({
       accountId,
@@ -700,7 +841,7 @@ const TransactionDialog = ({
   }
 
   return (
-    <DialogFrame title={transaction ? 'Edit transaction' : 'New transaction'} subtitle="Transactions immediately update account and category balances." onClose={onClose} wide>
+    <DialogFrame title={transaction ? 'Edit transaction' : 'New transaction'} subtitle="Nothing changes until you save the transaction." onClose={onClose} wide>
       <form onSubmit={submit}>
         <div className="kind-toggle">
           <button type="button" className={kind === 'expense' ? 'active' : ''} onClick={() => setKind('expense')}>Expense</button>
@@ -729,8 +870,16 @@ const TransactionDialog = ({
               </select>
             </label>
           )}
-          <label>Amount<input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" required /></label>
-          <label>Memo <span className="optional">Optional</span><input value={memo} onChange={(event) => setMemo(event.target.value)} /></label>
+          <div className="transaction-amount-editor span-two">
+            <label>Amount<input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" required /></label>
+            <NormalizedMoneySlider
+              value={amountMinor}
+              max={sliderMax}
+              currency={state.currency}
+              onChange={(value) => setAmount((value / 100).toFixed(2))}
+            />
+          </div>
+          <label className="span-two">Memo <span className="optional">Optional</span><input value={memo} onChange={(event) => setMemo(event.target.value)} /></label>
         </div>
         <footer className="dialog-actions split-actions">
           {onDelete ? <button type="button" className="danger-button" onClick={onDelete}>Delete</button> : <span />}
@@ -1142,7 +1291,7 @@ const BudgetWorkspace = ({
     [session],
   )
 
-  const [state, actions, saveStatus] = useBudgetStore(session.state, session.mode === 'protected' ? persist : undefined)
+  const [state, actions, saveStatus, history] = useBudgetStore(session.state, session.mode === 'protected' ? persist : undefined)
   const [view, setView] = useState<View>('plan')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [categoryDialog, setCategoryDialog] = useState<CategoryDialogState>(null)
@@ -1150,6 +1299,10 @@ const BudgetWorkspace = ({
   const [accountDialog, setAccountDialog] = useState<Account | 'new' | null>(null)
   const [movePreset, setMovePreset] = useState<MovePreset | null>(null)
   const [groupDialog, setGroupDialog] = useState<{ id?: string; name: string } | null>(null)
+  const [assignmentCategory, setAssignmentCategory] = useState<Category | null>(null)
+  const [allocationHistory, setAllocationHistory] = useState<{ categoryId?: string } | null>(null)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const [toastVisible, setToastVisible] = useState(false)
   const [selectedAccountId, setSelectedAccountId] = useState<string | undefined>()
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null)
@@ -1171,15 +1324,34 @@ const BudgetWorkspace = ({
     const keyHandler = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
       if (target?.matches('input, textarea, select')) return
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
+        event.preventDefault()
+        if (event.shiftKey) actions.redo()
+        else actions.undo()
+        return
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'y') {
+        event.preventDefault()
+        actions.redo()
+        return
+      }
       if (event.key.toLowerCase() === 'p') setView('plan')
       if (event.key.toLowerCase() === 'a') setView('accounts')
       if (event.key.toLowerCase() === 'n') setTransactionDialog({})
       if (event.key.toLowerCase() === 'm') setMovePreset({})
       if (event.key.toLowerCase() === 't') actions.setActiveMonth(currentMonthKey())
+      if (event.key === '?') setShortcutsOpen(true)
     }
     window.addEventListener('keydown', keyHandler)
     return () => window.removeEventListener('keydown', keyHandler)
   }, [actions])
+
+  useEffect(() => {
+    if (!history.lastAction) return
+    setToastVisible(true)
+    const timeout = window.setTimeout(() => setToastVisible(false), 5000)
+    return () => window.clearTimeout(timeout)
+  }, [history.lastAction])
 
   useEffect(() => {
     if (session.mode !== 'protected') return
@@ -1272,6 +1444,7 @@ const BudgetWorkspace = ({
 
         <div className="sidebar-footer">
           {installPrompt && <button onClick={install}><DownloadIcon /><span>Install app</span></button>}
+          <button onClick={() => setShortcutsOpen(true)}><KeyboardIcon /><span>Keyboard shortcuts</span><kbd>?</kbd></button>
           <button onClick={() => setSettingsOpen(true)}><SettingsIcon /><span>Settings</span></button>
           <div className={`save-status ${saveStatus}`}>
             <span />
@@ -1288,7 +1461,7 @@ const BudgetWorkspace = ({
             collapsedGroups={collapsedGroups}
             onToggleGroup={toggleGroup}
             onMonthChange={actions.setActiveMonth}
-            onAssignmentChange={actions.setAssignment}
+            onEditAssignment={setAssignmentCategory}
             onEditCategory={(category) => setCategoryDialog({ mode: 'edit', category })}
             onAddCategory={(groupId) => setCategoryDialog({ mode: 'create', groupId })}
             onEditGroup={(id, name) => setGroupDialog({ id, name })}
@@ -1297,6 +1470,9 @@ const BudgetWorkspace = ({
             onMove={(preset = {}) => setMovePreset(preset)}
             onAutoAssign={() => actions.autoAssignTargets(state.activeMonth)}
             onToggleSnooze={(categoryId) => actions.toggleTargetSnooze(state.activeMonth, categoryId)}
+            onOpenHistory={(categoryId) => setAllocationHistory(categoryId ? { categoryId } : {})}
+            onUndo={actions.undo}
+            canUndo={history.canUndo}
           />
         ) : (
           <AccountsView
@@ -1335,6 +1511,18 @@ const BudgetWorkspace = ({
               setTransactionDialog(null)
             }
           } : undefined}
+        />
+      )}
+
+      {assignmentCategory && (
+        <AssignmentDialog
+          state={state}
+          category={assignmentCategory}
+          onClose={() => setAssignmentCategory(null)}
+          onSave={(amount) => {
+            actions.setAssignment(state.activeMonth, assignmentCategory.id, amount)
+            setAssignmentCategory(null)
+          }}
         />
       )}
 
@@ -1409,6 +1597,25 @@ const BudgetWorkspace = ({
           onResetDemo={() => actions.replaceState(createDemoState())}
           onLock={onCloseSession}
         />
+      )}
+
+
+      {allocationHistory && (
+        <AllocationHistoryDialog
+          state={state}
+          categoryId={allocationHistory.categoryId}
+          onClose={() => setAllocationHistory(null)}
+        />
+      )}
+
+      {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+
+      {toastVisible && history.lastAction && (
+        <div className="action-toast" role="status">
+          <span>{history.lastAction.label}</span>
+          <button onClick={actions.undo} disabled={!history.canUndo}>Undo <kbd>⌘Z</kbd></button>
+          <button className="toast-close" onClick={() => setToastVisible(false)} aria-label="Dismiss">×</button>
+        </div>
       )}
 
       <input ref={importInputRef} type="file" accept="application/json,.json" hidden onChange={importData} />

@@ -73,8 +73,26 @@ export interface BudgetMonth {
   note?: string
 }
 
+export type AllocationEventKind = 'assignment' | 'move' | 'auto-assign'
+
+export interface AllocationChange {
+  categoryId: string | null
+  delta: number
+  before: number
+  after: number
+}
+
+export interface AllocationEvent {
+  id: string
+  createdAt: string
+  month: string
+  kind: AllocationEventKind
+  label: string
+  changes: AllocationChange[]
+}
+
 export interface BudgetState {
-  version: 3
+  version: 4
   name: string
   currency: string
   activeMonth: string
@@ -83,6 +101,7 @@ export interface BudgetState {
   accounts: Account[]
   transactions: Transaction[]
   months: Record<string, BudgetMonth>
+  allocationEvents: AllocationEvent[]
   importSource?: {
     kind: 'nynab'
     importedAt: string
@@ -542,7 +561,7 @@ export const getMonthFundingSummary = (state: BudgetState, month: string): Month
   )
 }
 
-export const getReadyToAssign = (state: BudgetState, month: string): number => {
+export const getRawReadyToAssign = (state: BudgetState, month: string): number => {
   const accountIds = new Set(state.accounts.map((account) => account.id))
 
   const uncategorizedCashFlow = state.transactions
@@ -560,6 +579,60 @@ export const getReadyToAssign = (state: BudgetState, month: string): number => {
     .reduce((sum, amount) => sum + amount, 0)
 
   return uncategorizedCashFlow - assigned - getCashOverspendingBeforeMonth(state, month)
+}
+
+/**
+ * Ready to Assign is one pool across the plan. Money left in an earlier month
+ * can be consumed by assignments made later, so revisiting that earlier month
+ * must not resurrect money that has already been given a job.
+ *
+ * Positive month deltas create funding lots. Later deficits consume the oldest
+ * lots first. A past month therefore shows only the portion of its earlier
+ * money that is still genuinely unassigned today.
+ */
+export const getReadyToAssign = (state: BudgetState, month: string): number => {
+  const rawSelected = getRawReadyToAssign(state, month)
+  const relevantMonths = getRelevantMonths(state)
+  const latestMonth = relevantMonths.at(-1)
+
+  if (!latestMonth || compareMonths(month, latestMonth) >= 0 || rawSelected <= 0) {
+    return rawSelected
+  }
+
+  const lots: Array<{ month: string; amount: number }> = []
+  let unresolvedDeficit = 0
+  let previousRaw = 0
+
+  for (const key of relevantMonths) {
+    const raw = getRawReadyToAssign(state, key)
+    let delta = raw - previousRaw
+    previousRaw = raw
+
+    if (delta > 0 && unresolvedDeficit > 0) {
+      const covered = Math.min(delta, unresolvedDeficit)
+      delta -= covered
+      unresolvedDeficit -= covered
+    }
+
+    if (delta > 0) {
+      lots.push({ month: key, amount: delta })
+      continue
+    }
+
+    let need = -delta
+    while (need > 0 && lots.length > 0) {
+      const oldest = lots[0]
+      const used = Math.min(need, oldest.amount)
+      oldest.amount -= used
+      need -= used
+      if (oldest.amount === 0) lots.shift()
+    }
+    unresolvedDeficit += need
+  }
+
+  return lots
+    .filter((lot) => compareMonths(lot.month, month) <= 0)
+    .reduce((sum, lot) => sum + lot.amount, 0)
 }
 
 export const getRecentTransactions = (state: BudgetState, accountId?: string): Transaction[] =>
@@ -701,8 +774,35 @@ export const normalizeBudgetState = (raw: unknown): BudgetState => {
     : currentMonthKey()
   if (!months[activeMonth]) months[activeMonth] = { month: activeMonth, assignments: {} }
 
+  const allocationEvents: AllocationEvent[] = asArray(raw.allocationEvents)
+    .filter(isRecord)
+    .map((event) => {
+      const kind: AllocationEventKind = event.kind === 'move' || event.kind === 'auto-assign'
+        ? event.kind
+        : 'assignment'
+      const changes: AllocationChange[] = asArray(event.changes)
+        .filter(isRecord)
+        .map((change) => ({
+          categoryId: typeof change.categoryId === 'string' ? change.categoryId : null,
+          delta: Math.round(asNumber(change.delta)),
+          before: Math.round(asNumber(change.before)),
+          after: Math.round(asNumber(change.after)),
+        }))
+        .filter((change) => change.delta !== 0)
+
+      return {
+        id: asString(event.id, uid('allocation')),
+        createdAt: asString(event.createdAt, new Date().toISOString()),
+        month: /^\d{4}-\d{2}$/.test(asString(event.month)) ? asString(event.month) : activeMonth,
+        kind,
+        label: asString(event.label, 'Allocation changed'),
+        changes,
+      }
+    })
+    .filter((event) => event.changes.length > 0)
+
   return {
-    version: 3,
+    version: 4,
     name: asString(raw.name, 'My budget'),
     currency: asString(raw.currency, 'USD'),
     activeMonth,
@@ -711,6 +811,7 @@ export const normalizeBudgetState = (raw: unknown): BudgetState => {
     accounts,
     transactions,
     months,
+    allocationEvents,
     ...(isRecord(raw.importSource) && raw.importSource.kind === 'nynab'
       ? {
           importSource: {
@@ -975,6 +1076,25 @@ const importNynabPlan = (plan: UnknownRecord): ImportResult => {
     : Object.keys(months).sort(compareMonths).at(-1) ?? fallbackMonth
   if (!months[activeMonth]) months[activeMonth] = { month: activeMonth, assignments: {} }
 
+  const allocationEvents: AllocationEvent[] = Object.values(months)
+    .sort((left, right) => compareMonths(left.month, right.month))
+    .map((budgetMonth) => ({
+      id: `nynab_assignments_${budgetMonth.month}`,
+      createdAt: `${budgetMonth.month}-01T00:00:00.000Z`,
+      month: budgetMonth.month,
+      kind: 'assignment' as const,
+      label: `Imported ${monthLabel(budgetMonth.month)} assignment snapshot`,
+      changes: Object.entries(budgetMonth.assignments)
+        .filter(([, amount]) => amount !== 0)
+        .map(([categoryId, amount]) => ({
+          categoryId,
+          delta: amount,
+          before: 0,
+          after: amount,
+        })),
+    }))
+    .filter((event) => event.changes.length > 0)
+
   const warnings: string[] = []
   const scheduledCount = asArray(plan.scheduled_transactions).filter(isRecord).length
   if (scheduledCount > 0) {
@@ -984,7 +1104,7 @@ const importNynabPlan = (plan: UnknownRecord): ImportResult => {
   return {
     source: 'nynab',
     state: {
-      version: 3,
+      version: 4,
       name: planName,
       currency,
       activeMonth,
@@ -993,6 +1113,7 @@ const importNynabPlan = (plan: UnknownRecord): ImportResult => {
       accounts,
       transactions,
       months,
+      allocationEvents,
       importSource: {
         kind: 'nynab',
         importedAt: new Date().toISOString(),
@@ -1021,7 +1142,7 @@ export const parseImportedBudget = (raw: unknown): ImportResult => {
 export const createEmptyState = (): BudgetState => {
   const month = currentMonthKey()
   return {
-    version: 3,
+    version: 4,
     name: 'My budget',
     currency: 'USD',
     activeMonth: month,
@@ -1065,6 +1186,7 @@ export const createEmptyState = (): BudgetState => {
     accounts: [],
     transactions: [],
     months: { [month]: { month, assignments: {} } },
+    allocationEvents: [],
   }
 }
 
@@ -1190,7 +1312,7 @@ export const createDemoState = (): BudgetState => {
   ]
 
   return {
-    version: 3,
+    version: 4,
     name: 'Demo budget',
     currency: 'USD',
     activeMonth: month,
@@ -1223,5 +1345,6 @@ export const createDemoState = (): BudgetState => {
         },
       },
     },
+    allocationEvents: [],
   }
 }
