@@ -4,7 +4,6 @@ export type TargetScheduleUnit = 'week' | 'month' | 'year'
 export interface Account {
   id: string
   name: string
-  note?: string
   closed?: boolean
 }
 
@@ -61,8 +60,8 @@ export interface Transaction {
   id: string
   accountId: string
   date: string
+  /** Payees are optional; an empty string means no payee was entered. */
   payee: string
-  memo: string
   categoryId: string | null
   amount: number
 }
@@ -70,7 +69,6 @@ export interface Transaction {
 export interface BudgetMonth {
   month: string
   assignments: Record<string, number>
-  note?: string
 }
 
 export type AllocationEventKind = 'assignment' | 'move' | 'auto-assign'
@@ -92,7 +90,7 @@ export interface AllocationEvent {
 }
 
 export interface BudgetState {
-  version: 4
+  version: 5
   name: string
   currency: string
   activeMonth: string
@@ -704,7 +702,6 @@ export const normalizeBudgetState = (raw: unknown): BudgetState => {
     .map((account) => ({
       id: asString(account.id, uid('account')),
       name: asString(account.name, 'Account'),
-      ...(asString(account.note) ? { note: asString(account.note) } : {}),
       ...(asBoolean(account.closed) ? { closed: true } : {}),
     }))
 
@@ -741,8 +738,7 @@ export const normalizeBudgetState = (raw: unknown): BudgetState => {
       id: asString(transaction.id, uid('transaction')),
       accountId: asString(transaction.accountId),
       date: asString(transaction.date, todayKey()),
-      payee: asString(transaction.payee, 'Transaction'),
-      memo: asString(transaction.memo),
+      payee: asString(transaction.payee),
       categoryId:
         typeof transaction.categoryId === 'string' && categoryIds.has(transaction.categoryId)
           ? transaction.categoryId
@@ -761,11 +757,7 @@ export const normalizeBudgetState = (raw: unknown): BudgetState => {
           if (categoryIds.has(categoryId)) assignments[categoryId] = Math.round(asNumber(amount))
         }
       }
-      months[monthKey] = {
-        month: monthKey,
-        assignments,
-        ...(asString(monthValue.note) ? { note: asString(monthValue.note) } : {}),
-      }
+      months[monthKey] = { month: monthKey, assignments }
     }
   }
 
@@ -802,7 +794,7 @@ export const normalizeBudgetState = (raw: unknown): BudgetState => {
     .filter((event) => event.changes.length > 0)
 
   return {
-    version: 4,
+    version: 5,
     name: asString(raw.name, 'My budget'),
     currency: asString(raw.currency, 'USD'),
     activeMonth,
@@ -966,14 +958,13 @@ const importNynabPlan = (plan: UnknownRecord): ImportResult => {
     .map((account) => ({
       id: asString(account.id, uid('account')),
       name: asString(account.name, 'Account'),
-      ...(asString(account.note) ? { note: asString(account.note) } : {}),
       ...(asBoolean(account.closed) ? { closed: true } : {}),
     }))
   const accountIds = new Set(accounts.map((account) => account.id))
 
   const payeeNames = new Map<string, string>()
   for (const payee of asArray(plan.payees).filter(isRecord)) {
-    if (!asBoolean(payee.deleted)) payeeNames.set(asString(payee.id), asString(payee.name, 'Transaction'))
+    if (!asBoolean(payee.deleted)) payeeNames.set(asString(payee.id), asString(payee.name))
   }
 
   const rawSubtransactions = asArray(plan.subtransactions).filter(isRecord)
@@ -996,7 +987,6 @@ const importNynabPlan = (plan: UnknownRecord): ImportResult => {
     const parentPayee = payeeNames.get(asString(transaction.payee_id))
       ?? asString(transaction.import_payee_name)
       ?? asString(transaction.import_payee_name_original)
-      ?? 'Transaction'
     const splits = subtransactionsByParent.get(parentId) ?? []
 
     if (splits.length > 0) {
@@ -1008,7 +998,6 @@ const importNynabPlan = (plan: UnknownRecord): ImportResult => {
           accountId,
           date,
           payee: payeeNames.get(asString(split.payee_id)) ?? parentPayee,
-          memo: asString(split.memo, asString(transaction.memo)),
           categoryId: categoryIds.has(splitCategoryId) ? splitCategoryId : null,
           amount: milliunitsToMinor(split.amount, decimalDigits),
         })
@@ -1022,7 +1011,6 @@ const importNynabPlan = (plan: UnknownRecord): ImportResult => {
       accountId,
       date,
       payee: parentPayee,
-      memo: asString(transaction.memo),
       categoryId: categoryIds.has(categoryId) ? categoryId : null,
       amount: milliunitsToMinor(transaction.amount, decimalDigits),
     })
@@ -1044,7 +1032,6 @@ const importNynabPlan = (plan: UnknownRecord): ImportResult => {
         accountId,
         date: /^\d{4}-\d{2}-\d{2}$/.test(lastModifiedDate) ? lastModifiedDate : todayKey(),
         payee: 'Imported balance adjustment',
-        memo: 'Added by Rubies so the imported account balance matches the nYNAB export.',
         categoryId: null,
         amount: difference,
       })
@@ -1063,11 +1050,7 @@ const importNynabPlan = (plan: UnknownRecord): ImportResult => {
         assignments[categoryId] = milliunitsToMinor(category.budgeted, decimalDigits)
       }
     }
-    months[monthKey] = {
-      month: monthKey,
-      assignments,
-      ...(asString(month.note) ? { note: asString(month.note) } : {}),
-    }
+    months[monthKey] = { month: monthKey, assignments }
   }
 
   const todayMonth = currentMonthKey()
@@ -1104,7 +1087,7 @@ const importNynabPlan = (plan: UnknownRecord): ImportResult => {
   return {
     source: 'nynab',
     state: {
-      version: 4,
+      version: 5,
       name: planName,
       currency,
       activeMonth,
@@ -1142,7 +1125,7 @@ export const parseImportedBudget = (raw: unknown): ImportResult => {
 export const createEmptyState = (): BudgetState => {
   const month = currentMonthKey()
   return {
-    version: 4,
+    version: 5,
     name: 'My budget',
     currency: 'USD',
     activeMonth: month,
@@ -1302,17 +1285,17 @@ export const createDemoState = (): BudgetState => {
   ]
 
   const transactions: Transaction[] = [
-    { id: 'tx_open_everyday', accountId: 'account_everyday', date: `${previousMonth}-02`, payee: 'Opening balance', memo: '', categoryId: null, amount: 285_000 },
-    { id: 'tx_open_savings', accountId: 'account_savings', date: `${previousMonth}-02`, payee: 'Opening balance', memo: '', categoryId: null, amount: 240_000 },
-    { id: 'tx_payday', accountId: 'account_everyday', date: dateOffset(-5), payee: 'Acme Studio', memo: 'Salary', categoryId: null, amount: 320_000 },
-    { id: 'tx_rent', accountId: 'account_everyday', date: dateOffset(-4), payee: 'Home Properties', memo: 'Monthly rent', categoryId: 'category_rent', amount: -125_000 },
-    { id: 'tx_market', accountId: 'account_everyday', date: dateOffset(-2), payee: 'Fresh Market', memo: 'Weekly shop', categoryId: 'category_groceries', amount: -8_640 },
-    { id: 'tx_train', accountId: 'account_everyday', date: dateOffset(-1), payee: 'Metro', memo: '', categoryId: 'category_transport', amount: -2_450 },
-    { id: 'tx_cinema', accountId: 'account_everyday', date: todayKey(), payee: 'Cinema House', memo: 'Friday night', categoryId: 'category_fun', amount: -3_800 },
+    { id: 'tx_open_everyday', accountId: 'account_everyday', date: `${previousMonth}-02`, payee: 'Opening balance', categoryId: null, amount: 285_000 },
+    { id: 'tx_open_savings', accountId: 'account_savings', date: `${previousMonth}-02`, payee: 'Opening balance', categoryId: null, amount: 240_000 },
+    { id: 'tx_payday', accountId: 'account_everyday', date: dateOffset(-5), payee: 'Acme Studio', categoryId: null, amount: 320_000 },
+    { id: 'tx_rent', accountId: 'account_everyday', date: dateOffset(-4), payee: 'Home Properties', categoryId: 'category_rent', amount: -125_000 },
+    { id: 'tx_market', accountId: 'account_everyday', date: dateOffset(-2), payee: 'Fresh Market', categoryId: 'category_groceries', amount: -8_640 },
+    { id: 'tx_train', accountId: 'account_everyday', date: dateOffset(-1), payee: 'Metro', categoryId: 'category_transport', amount: -2_450 },
+    { id: 'tx_cinema', accountId: 'account_everyday', date: todayKey(), payee: 'Cinema House', categoryId: 'category_fun', amount: -3_800 },
   ]
 
   return {
-    version: 4,
+    version: 5,
     name: 'Demo budget',
     currency: 'USD',
     activeMonth: month,

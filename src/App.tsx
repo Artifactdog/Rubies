@@ -89,9 +89,10 @@ const ChevronIcon = ({ direction }: { direction: 'left' | 'right' }) => (
   <Icon size={17}><path d={direction === 'left' ? 'm15 18-6-6 6-6' : 'm9 18 6-6-6-6'}/></Icon>
 )
 const CalendarIcon = () => <Icon><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/></Icon>
-const SnoozeIcon = () => <Icon><path d="M7 7h7l-7 7h7M15 4h5l-5 5h5"/></Icon>
+const SnoozeIcon = () => <Icon><path d="M20.4 14.8A8 8 0 0 1 9.2 3.6 8.5 8.5 0 1 0 20.4 14.8Z"/></Icon>
 const HistoryIcon = () => <Icon><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></Icon>
 const UndoIcon = () => <Icon><path d="M9 7 4 12l5 5"/><path d="M5 12h8a6 6 0 0 1 6 6"/></Icon>
+const MoreIcon = () => <Icon size={17}><path d="M6 12h.01M12 12h.01M18 12h.01"/></Icon>
 const KeyboardIcon = () => <Icon><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h7M17 14h.01"/></Icon>
 
 const RubyMark = () => <div className="ruby-mark" aria-hidden="true"><span /></div>
@@ -367,7 +368,6 @@ const AssignmentDialog = ({
             onKeyDown={(event) => {
               if (event.key === 'Escape') onClose()
             }}
-            autoFocus
           />
         </label>
         <NormalizedMoneySlider
@@ -419,6 +419,11 @@ const CategoryRow = ({
       <div className="category-identity">
         <button className="category-name" onClick={onEdit}>{category.name}</button>
         <p className="target-description">{target?.label ?? category.note ?? 'No target set'}</p>
+        <p className="mobile-target-summary">
+          {target
+            ? `Need ${formatMoney(target.requiredThisMonth, state.currency)} · ${target.leftToAssign > 0 ? `${formatMoney(target.leftToAssign, state.currency)} left` : 'funded'}`
+            : 'No monthly target'}
+        </p>
         {target && (
           <div className="progress-wrap" aria-label={`${progress}% funded`}>
             <div className="progress-track"><span style={{ width: `${progress}%` }} /></div>
@@ -456,7 +461,7 @@ const CategoryRow = ({
         <strong>{formatMoney(summary.available, state.currency)}</strong>
       </div>
 
-      <div className="row-actions">
+      <div className="row-actions desktop-row-actions">
         <button className="mini-action" onClick={onOpenHistory} title="Allocation history"><HistoryIcon /></button>
         {target && (
           <button className={`mini-action${target.snoozed ? ' active' : ''}`} onClick={onToggleSnooze} title={target.snoozed ? 'Resume target' : 'Snooze target this month'}>
@@ -466,6 +471,18 @@ const CategoryRow = ({
         <button className="mini-action" onClick={onMove} title="Move money"><MoveIcon /></button>
         <button className="mini-action" onClick={onEdit} title="Edit category"><EditIcon /></button>
       </div>
+
+      <details className="mobile-row-menu">
+        <summary className="mini-action" aria-label={`Actions for ${category.name}`}><MoreIcon /></summary>
+        <div className="mobile-row-menu-panel">
+          <button type="button" onClick={onOpenHistory}><HistoryIcon />History</button>
+          {target && (
+            <button type="button" onClick={onToggleSnooze}><SnoozeIcon />{target.snoozed ? 'Resume target' : 'Snooze target'}</button>
+          )}
+          <button type="button" onClick={onMove}><MoveIcon />Move money</button>
+          <button type="button" onClick={onEdit}><EditIcon />Edit category</button>
+        </div>
+      </details>
     </article>
   )
 }
@@ -751,7 +768,7 @@ const AccountsView = ({
           >
             <span>{account.name}</span>
             <strong>{formatMoney(getAccountBalance(state, account.id), state.currency)}</strong>
-            <small>{account.closed ? 'Closed' : account.note || 'Open account'} · Double-click to edit</small>
+            <small>{account.closed ? 'Closed account' : 'Open account'} · Double-click to edit</small>
           </button>
         ))}
       </section>
@@ -776,7 +793,7 @@ const AccountsView = ({
               {transactions.map((transaction) => (
                 <tr className={transaction.amount < 0 ? 'expense-row' : 'income-row'} key={transaction.id}>
                   <td>{transaction.date}</td>
-                  <td><strong>{transaction.payee}</strong>{transaction.memo && <small>{transaction.memo}</small>}</td>
+                  <td><strong>{transaction.payee || 'No payee'}</strong></td>
                   <td>{transaction.categoryId ? categoryById.get(transaction.categoryId) ?? 'Archived category' : 'Ready to assign'}</td>
                   <td>{accountById.get(transaction.accountId)}</td>
                   <td><span className={`flow-badge ${transaction.amount < 0 ? 'expense' : 'income'}`}>{transaction.amount < 0 ? '↓ Expense' : '↑ Income'}</span></td>
@@ -814,7 +831,6 @@ const TransactionDialog = ({
   const [payee, setPayee] = useState(transaction?.payee ?? '')
   const [categoryId, setCategoryId] = useState(transaction?.categoryId ?? state.categories.find((category) => !category.hidden)?.id ?? '')
   const [amount, setAmount] = useState(transaction ? (Math.abs(transaction.amount) / 100).toFixed(2) : '')
-  const [memo, setMemo] = useState(transaction?.memo ?? '')
   const amountMinor = Math.abs(parseMoney(amount))
   const selectedCategory = state.categories.find((category) => category.id === categoryId)
   const categoryAvailable = kind === 'expense' && selectedCategory
@@ -829,12 +845,11 @@ const TransactionDialog = ({
   const submit = (event: FormEvent) => {
     event.preventDefault()
     const parsed = amountMinor
-    if (!accountId || !payee.trim() || parsed <= 0) return
+    if (!accountId || parsed <= 0) return
     onSubmit({
       accountId,
       date,
       payee: payee.trim(),
-      memo: memo.trim(),
       categoryId: kind === 'income' ? null : categoryId || null,
       amount: kind === 'income' ? parsed : -parsed,
     })
@@ -854,8 +869,8 @@ const TransactionDialog = ({
             </select>
           </label>
           <label>Date<input type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label>
-          <label className="span-two">Payee
-            <input value={payee} onChange={(event) => setPayee(event.target.value)} placeholder={kind === 'expense' ? 'Who did you pay?' : 'Where did it come from?'} autoFocus required />
+          <label className="span-two">Payee <span className="optional">Optional</span>
+            <input value={payee} onChange={(event) => setPayee(event.target.value)} placeholder={kind === 'expense' ? 'Who did you pay?' : 'Where did it come from?'} />
           </label>
           {kind === 'expense' && (
             <label className="span-two">Category
@@ -879,7 +894,6 @@ const TransactionDialog = ({
               onChange={(value) => setAmount((value / 100).toFixed(2))}
             />
           </div>
-          <label className="span-two">Memo <span className="optional">Optional</span><input value={memo} onChange={(event) => setMemo(event.target.value)} /></label>
         </div>
         <footer className="dialog-actions split-actions">
           {onDelete ? <button type="button" className="danger-button" onClick={onDelete}>Delete</button> : <span />}
@@ -908,6 +922,7 @@ const CategoryDialog = ({
   const initialTarget = initial?.target
   const initialSchedule = initialTarget?.schedule
   const initialRepeat = initialTarget?.repeat
+  const [note, setNote] = useState(initial?.note ?? '')
   const fallbackTargetDate = initialTarget?.targetDate
     ?? (initialTarget?.targetMonth ? monthEndDate(initialTarget.targetMonth) : monthEndDate(shiftMonth(state.activeMonth, 6)))
 
@@ -925,7 +940,6 @@ const CategoryDialog = ({
   const [repeatUnit, setRepeatUnit] = useState<'month' | 'year'>(initialRepeat?.kind === 'recurring' ? initialRepeat.unit : 'year')
   const [repeatInterval, setRepeatInterval] = useState(initialRepeat?.kind === 'recurring' ? String(initialRepeat.interval) : '1')
   const [customRepeatDates, setCustomRepeatDates] = useState(initialRepeat?.kind === 'custom' ? initialRepeat.dates.join('\n') : '')
-  const [note, setNote] = useState(initial?.note ?? '')
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
@@ -977,7 +991,7 @@ const CategoryDialog = ({
     <DialogFrame title={initial ? 'Edit category' : 'Add category'} subtitle="Targets produce a month-specific recommendation, not merely a lifetime goal total." onClose={onClose} wide>
       <form onSubmit={submit}>
         <div className="form-grid single-column">
-          <label>Category name<input value={name} onChange={(event) => setName(event.target.value)} autoFocus required /></label>
+          <label>Category name<input value={name} onChange={(event) => setName(event.target.value)} required /></label>
           <label>Group
             <select value={selectedGroupId} onChange={(event) => setSelectedGroupId(event.target.value)}>
               {state.groups.filter((group) => !group.hidden).map((group) => <option value={group.id} key={group.id}>{group.name}</option>)}
@@ -1125,7 +1139,7 @@ const MoveMoneyDialog = ({
           <span className="move-arrow">→</span>
           <label>To<select value={to} onChange={(event) => setTo(event.target.value)}>{options}</select></label>
         </div>
-        <label className="standalone-label">Amount<input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" autoFocus /></label>
+        <label className="standalone-label">Amount<input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" /></label>
         <div className="source-balance">Available to move: <strong>{formatMoney(Math.max(0, sourceAvailable), state.currency)}</strong></div>
         {parsed > sourceAvailable && <div className="form-error">That source does not have enough available money.</div>}
         <footer className="dialog-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button" disabled={!valid}>Move money</button></footer>
@@ -1139,7 +1153,7 @@ const GroupDialog = ({ initialName, onClose, onSubmit }: { initialName: string; 
   return (
     <DialogFrame title={initialName ? 'Rename group' : 'New category group'} onClose={onClose}>
       <form onSubmit={(event) => { event.preventDefault(); if (name.trim()) onSubmit(name.trim()) }}>
-        <div className="form-grid single-column"><label>Group name<input value={name} onChange={(event) => setName(event.target.value)} autoFocus required /></label></div>
+        <div className="form-grid single-column"><label>Group name<input value={name} onChange={(event) => setName(event.target.value)} required /></label></div>
         <footer className="dialog-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" type="submit">Save group</button></footer>
       </form>
     </DialogFrame>
@@ -1156,7 +1170,6 @@ const AccountDialog = ({
   onSubmit: (account: Omit<Account, 'id'>, openingBalance: number) => void
 }) => {
   const [name, setName] = useState(initial?.name ?? '')
-  const [note, setNote] = useState(initial?.note ?? '')
   const [closed, setClosed] = useState(initial?.closed ?? false)
   const [openingBalance, setOpeningBalance] = useState('')
 
@@ -1166,7 +1179,6 @@ const AccountDialog = ({
     onSubmit(
       {
         name: name.trim(),
-        ...(note.trim() ? { note: note.trim() } : {}),
         ...(closed ? { closed: true } : {}),
       },
       parseMoney(openingBalance),
@@ -1177,8 +1189,7 @@ const AccountDialog = ({
     <DialogFrame title={initial ? 'Edit account' : 'Add account'} subtitle="Every account behaves the same way in Rubies." onClose={onClose}>
       <form onSubmit={submit}>
         <div className="form-grid single-column">
-          <label>Account name<input value={name} onChange={(event) => setName(event.target.value)} autoFocus required /></label>
-          <label>Note <span className="optional">Optional</span><input value={note} onChange={(event) => setNote(event.target.value)} /></label>
+          <label>Account name<input value={name} onChange={(event) => setName(event.target.value)} required /></label>
           {!initial && <label>Current balance<input inputMode="decimal" value={openingBalance} onChange={(event) => setOpeningBalance(event.target.value)} placeholder="0.00" /></label>}
           {initial && <label className="checkbox-label"><input type="checkbox" checked={closed} onChange={(event) => setClosed(event.target.checked)} />Close this account</label>}
         </div>

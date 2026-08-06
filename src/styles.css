@@ -153,6 +153,7 @@ kbd {
   color: var(--muted);
   line-height: 0;
 }
+.mini-action > svg { display: block; margin: auto; }
 .mini-action.active { color: var(--accent-strong); border-color: var(--accent); background: var(--accent-soft); }
 .text-button {
   width: 100%;
@@ -508,6 +509,39 @@ button.summary-card { text-align: left; }
 }
 .category-name:hover { color: var(--accent-strong); }
 .row-actions { display: flex; justify-content: flex-end; gap: 4px; opacity: .38; transition: opacity .15s ease; }
+.mobile-row-menu,
+.mobile-target-summary { display: none; }
+.mobile-row-menu summary { list-style: none; cursor: pointer; }
+.mobile-row-menu summary::-webkit-details-marker { display: none; }
+.mobile-row-menu-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 5px);
+  right: 0;
+  width: max-content;
+  min-width: 176px;
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid var(--border-bright);
+  border-radius: 10px;
+  background: #211e26;
+  box-shadow: 0 16px 40px rgba(0,0,0,.42);
+}
+.mobile-row-menu-panel button {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font-size: 12px;
+}
+.mobile-row-menu-panel button:hover { background: var(--panel-hover); }
 .category-row:hover .row-actions,
 .row-actions:focus-within { opacity: 1; }
 .target-description {
@@ -989,18 +1023,55 @@ button.summary-card { text-align: left; }
   .summary-card { min-height: 82px; padding: 11px 12px; }
   .budget-toolbar { align-items: flex-start; }
   .category-row {
-    grid-template-columns: 1fr 1fr;
-    grid-template-areas:
-      "identity identity"
-      "target assigned"
-      "activity available"
-      "actions actions";
-    gap: 8px 10px;
-    min-height: 0;
-    padding: 10px 12px;
+    position: relative;
+    grid-template-columns: minmax(92px, 1.15fr) repeat(3, minmax(52px, .66fr)) 28px;
+    grid-template-areas: "identity assigned activity available menu";
+    gap: 4px;
+    min-height: 58px;
+    padding: 5px 6px 5px 10px;
   }
-  .target-description { white-space: normal; }
-  .row-actions { opacity: 1; }
+  .category-identity { gap: 1px; }
+  .category-name { font-size: 12px; }
+  .target-description { font-size: 8px; line-height: 1.15; white-space: nowrap; }
+  .mobile-target-summary {
+    display: block;
+    margin: 0;
+    overflow: hidden;
+    color: var(--subtle);
+    font-size: 8px;
+    line-height: 1.15;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .progress-wrap,
+  .target-compact-cell,
+  .desktop-row-actions { display: none; }
+  .assigned-value-button {
+    grid-area: assigned;
+    min-height: 38px;
+    padding: 3px 4px;
+    border-color: transparent;
+    background: transparent;
+  }
+  .money-stat { grid-area: activity; }
+  .available-card { grid-area: available; }
+  .money-stat,
+  .available-card { gap: 1px; padding: 3px 4px; }
+  .assigned-value-button span,
+  .money-stat span,
+  .available-card span { font-size: 7px; letter-spacing: .04em; }
+  .assigned-value-button strong,
+  .money-stat strong,
+  .available-card strong { font-size: 10px; }
+  .mobile-row-menu { display: block; grid-area: menu; position: relative; align-self: center; justify-self: end; }
+  .mobile-row-menu > summary { width: 28px; height: 28px; border-radius: 8px; }
+  .category-group,
+  .group-categories { overflow: visible; }
+  .group-row { min-height: 34px; padding-top: 3px; padding-bottom: 3px; }
+  .group-name strong { font-size: 12px; }
+  .group-name small { font-size: 9px; }
+  input, select, textarea { font-size: 16px !important; }
+  button, input, select, textarea, summary { touch-action: manipulation; }
   .account-overview { grid-template-columns: 1fr 1fr; }
   .transaction-amount-editor { grid-template-columns: 1fr; }
   .assignment-context { grid-template-columns: 1fr 1fr; }
@@ -1011,26 +1082,19 @@ button.summary-card { text-align: left; }
 
 @media (max-width: 560px) {
   .access-card { padding: 24px 18px; border-radius: 16px; }
-  .month-summary-grid,
+  .month-summary-grid { grid-template-columns: 1fr 1fr; }
   .account-overview { grid-template-columns: 1fr; }
-  .summary-card { min-height: 76px; }
+  .summary-card { min-height: 66px; padding: 9px 10px; }
+  .summary-card strong { font-size: 17px; }
   .header-actions { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
   .header-actions .primary-button { grid-column: 1 / -1; }
   .budget-toolbar { display: grid; }
   .group-row { display: grid; grid-template-columns: 1fr auto; }
-  .category-row {
-    grid-template-columns: 1fr 1fr;
-    grid-template-areas:
-      "identity identity"
-      "target assigned"
-      "activity available"
-      "actions actions";
-  }
   .dialog-backdrop { padding: 0; align-items: end; }
   .dialog-card,
   .dialog-card.dialog-wide {
     width: 100%;
-    max-height: 94vh;
+    max-height: min(94dvh, 94vh);
     border-radius: 18px 18px 0 0;
   }
   .dialog-header { padding: 18px; }

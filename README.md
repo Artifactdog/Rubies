@@ -4,13 +4,16 @@ Rubies is a self-hosted, local-first envelope budgeting PWA with a calm, informa
 
 > Rubies is an independent project. It is not affiliated with or endorsed by YNAB or Obsidian.
 
-## What works in 2026.8.6.2
+## What works in 2026.8.6.3
 
+- Compact mobile category rows with dense assigned, activity, and available values
+- Mobile-safe dialogs that do not auto-focus or trigger browser zoom
+- Optional transaction payees; notes exist only on categories
 ### Budgeting
 
 - Monthly zero-based assignments with positive category balance rollover
 - Cash overspending resets at month end and reduces the next month’s Ready to Assign
-- Editable category names, groups, notes, and targets
+- Editable category names, groups, category notes, and targets
 - Three target behaviors:
   - Set aside another amount on each scheduled date
   - Refill an available balance on each scheduled date
@@ -42,9 +45,9 @@ The importer preserves:
 
 - plan name and ISO currency
 - accounts and current account balances
-- category groups, categories, notes, hidden state, and archived state
+- category groups, categories, category notes, hidden state, and archived state
 - historical and future month assignments
-- transactions, memos, payee names, categories, income, and transfers
+- transactions, optional payee names, categories, income, and transfers
 - monthly, every-N-month, annual, and one-time deadline targets
 - goal target amounts, due days, target months, and snoozed months
 - month-level assignment snapshots for allocation history
@@ -61,7 +64,7 @@ Rubies deliberately uses one account model:
 - no cash/credit/tracking account types
 - no credit-card payment workflow
 - no cleared/uncleared or reconciliation state
-- add, rename, annotate, close, and reopen accounts
+- add, rename, close, and reopen accounts
 - add, edit, and delete income or expense transactions
 - account filtering and live balances
 
@@ -134,7 +137,7 @@ Rubies releases use `YYYY.M.D.N` without zero-padding the month or day. The firs
 
 ## Roadmap
 
-1. **Current 2026.8.6.2 — practical local budgeting**
+1. **Current 2026.8.6.3 — practical local budgeting**
    - Protected vault, nYNAB import, month-aware targets, simple accounts, editable transactions, money movement, and demo mode
 2. **Durable local data**
    - IndexedDB repository and safer large-budget persistence

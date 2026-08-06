@@ -2,11 +2,11 @@
 
 ## Current shape
 
-Rubies 2026.8.6.2 is a static React PWA served by Nginx. It requires no external cloud account, database, or runtime service.
+Rubies 2026.8.6.3 is a static React PWA served by Nginx. It requires no external cloud account, database, or runtime service.
 
 ### Layers
 
-- `src/domain.ts` — version-4 data model, integer-money calculations, target recommendations, Ready to Assign, migration, and nYNAB import
+- `src/domain.ts` — version-5 data model, integer-money calculations, target recommendations, Ready to Assign, migration, and nYNAB import
 - `src/vault.ts` — PBKDF2 password derivation and AES-GCM encrypted local persistence
 - `src/store.ts` — assignments, money movement, target snoozing, categories, groups, simple accounts, and transactions
 - `src/App.tsx` — password gate, responsive workspace, confirmed allocation editing, undo, and allocation history, dialogs, import, and demo mode
@@ -20,7 +20,7 @@ Every monetary value is stored as an integer number of minor currency units. For
 
 nYNAB exports use milliunits. The importer converts them according to `currency_format.decimal_digits`; for a two-decimal currency, `14520000` nYNAB milliunits become `1452000` Rubies minor units, or `14,520.00`.
 
-## Version-4 budget model
+## Version-5 budget model
 
 Accounts intentionally have no type. Every account participates in the budget, and its balance is the sum of its transactions.
 
@@ -65,7 +65,7 @@ The importer recognizes the `data.plan` JSON shape and maps:
 - accounts to the single Rubies account model
 - user categories and groups while dropping internal system categories
 - month category `budgeted` values to Rubies assignments
-- transaction payees, memos, categories, transfers, and amounts
+- optional transaction payees, categories, transfers, and amounts
 - nYNAB goal cadence fields to Rubies schedules and deadlines
 - `goal_snoozed_at` month snapshots to target snoozing
 - subtransactions to flattened normal transactions
@@ -78,7 +78,7 @@ Scheduled transactions are not yet represented and result in a visible warning.
 
 Persistent state is serialized, encrypted with AES-256-GCM, and stored in browser localStorage. The encryption key is derived from the password using PBKDF2-SHA-256 with a random salt and 310,000 iterations. A random 96-bit IV is generated for every save.
 
-Older vault payloads are normalized to version 4 when unlocked.
+Older vault payloads are normalized to version 5 when unlocked. Account notes, transaction memos, and month notes are intentionally discarded; category notes are retained.
 
 ## Threat boundary
 
