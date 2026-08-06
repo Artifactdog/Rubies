@@ -23,6 +23,12 @@ const base64ToBytes = (value: string): Uint8Array => {
   return Uint8Array.from(binary, (character) => character.charCodeAt(0))
 }
 
+const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer => {
+  const copy = new Uint8Array(bytes.byteLength)
+  copy.set(bytes)
+  return copy.buffer
+}
+
 const deriveKey = async (password: string, salt: Uint8Array, iterations: number): Promise<CryptoKey> => {
   const material = await crypto.subtle.importKey(
     'raw',
@@ -33,7 +39,7 @@ const deriveKey = async (password: string, salt: Uint8Array, iterations: number)
   )
 
   return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', hash: 'SHA-256', salt: salt as BufferSource, iterations },
+    { name: 'PBKDF2', hash: 'SHA-256', salt: toArrayBuffer(salt), iterations },
     material,
     { name: 'AES-GCM', length: 256 },
     false,
@@ -48,7 +54,11 @@ const encryptAndSave = async (state: BudgetState, password: string): Promise<voi
   const iv = crypto.getRandomValues(new Uint8Array(12))
   const key = await deriveKey(password, salt, ITERATIONS)
   const plaintext = new TextEncoder().encode(JSON.stringify(state))
-  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext)
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: toArrayBuffer(iv) },
+    key,
+    toArrayBuffer(plaintext),
+  )
 
   const payload: EncryptedVault = {
     version: 1,
@@ -77,9 +87,9 @@ export const openVault = async (password: string): Promise<BudgetState> => {
     const iv = base64ToBytes(payload.iv)
     const key = await deriveKey(password, salt, payload.iterations)
     const plaintext = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv },
+      { name: 'AES-GCM', iv: toArrayBuffer(iv) },
       key,
-      base64ToBytes(payload.ciphertext),
+      toArrayBuffer(base64ToBytes(payload.ciphertext)),
     )
     const state = JSON.parse(new TextDecoder().decode(plaintext)) as BudgetState
     if (state.version !== 2) throw new Error('Unsupported budget data version.')
