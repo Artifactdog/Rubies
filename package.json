@@ -1,7 +1,7 @@
 {
   "name": "rubies-budget",
   "private": true,
-  "version": "2026.8.7.4",
+  "version": "2026.8.7.5",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
