@@ -1,0 +1,106 @@
+/* 2026.8.7.4: targeted layout fixes only. No runtime observers or DOM polling. */
+
+/* Rubies is a single-budget app. Keep the legacy state name only for import/export
+   compatibility, but remove plan naming from the product UI. */
+.access-form:has(input[autocomplete="new-password"]) > label:first-child {
+  display: none;
+}
+.settings-section .summary-list > div:first-child {
+  display: none;
+}
+
+@media (max-width: 820px) {
+  /* Force the plan header to use the actual viewport width instead of inheriting
+     the narrower implicit grid width that produced a dead strip on the right. */
+  .plan-header {
+    width: 100vw !important;
+    max-width: none !important;
+    margin-right: 0 !important;
+    margin-left: -10px !important;
+    padding-right: 10px !important;
+    padding-left: 10px !important;
+  }
+  .plan-header > div,
+  .plan-header .month-navigation,
+  .plan-header .header-actions {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+  .plan-header .header-actions {
+    justify-self: stretch !important;
+  }
+  .plan-header .header-actions > button {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  /* Mobile menus need to escape the group, so the outer container cannot clip.
+     Give the actual painted children matching rounded corners instead. */
+  .category-group {
+    border-radius: 12px !important;
+    background: transparent !important;
+  }
+  .category-group .group-row {
+    border-radius: 11px 11px 0 0;
+    background-clip: padding-box;
+  }
+  .category-group .group-categories > :last-child {
+    border-radius: 0 0 11px 11px;
+    background-clip: padding-box;
+  }
+  .category-group:has(.group-chevron.collapsed) .group-row {
+    border-bottom: 0;
+    border-radius: 11px;
+  }
+
+  /* iOS/WebKit date inputs retain an intrinsic minimum width unless explicitly
+     constrained. Keep every transaction field inside the visible screen. */
+  .transaction-screen-card .form-grid,
+  .transaction-mobile-screen .form-grid,
+  .transaction-screen-card .form-grid > label,
+  .transaction-mobile-screen .form-grid > label {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+  .transaction-screen-card input[type="date"],
+  .transaction-mobile-screen input[type="date"] {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  /* Removing Cancel must also remove the desktop split-layout placeholder and
+     wrapper. Otherwise the Save button only occupies half of the footer. */
+  .transaction-screen-card .dialog-actions.split-actions,
+  .transaction-mobile-screen .dialog-actions.split-actions {
+    display: block !important;
+  }
+  .transaction-screen-card .dialog-actions.split-actions > span,
+  .transaction-mobile-screen .dialog-actions.split-actions > span {
+    display: none !important;
+  }
+  .transaction-screen-card .dialog-actions.split-actions > div,
+  .transaction-mobile-screen .dialog-actions.split-actions > div {
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    flex: none !important;
+  }
+  .transaction-screen-card .dialog-actions .primary-button,
+  .transaction-mobile-screen .dialog-actions .primary-button {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+  }
+}
+
+@media (max-width: 560px) {
+  .plan-header {
+    margin-left: -8px !important;
+    padding-right: 8px !important;
+    padding-left: 8px !important;
+  }
+}
