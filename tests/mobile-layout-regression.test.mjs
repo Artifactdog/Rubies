@@ -23,6 +23,10 @@ test('mobile plan header fills its container without viewport-width hacks', asyn
 
 test('iOS standalone layout consumes safe areas explicitly', async () => {
   const css = await read('src/mobile-layout-fixes.css')
+  const html = await read('index.html')
+  assert.match(html, /viewport-fit=cover/)
+  assert.match(html, /apple-mobile-web-app-status-bar-style" content="black"/)
+  assert.doesNotMatch(html, /black-translucent/)
   assert.match(css, /--rubies-safe-top:\s*env\(safe-area-inset-top/)
   assert.match(css, /\.app-shell\s*\{[\s\S]*?padding-top:\s*var\(--rubies-safe-top\)/)
   assert.match(css, /\.budget-health-hud\s*\{[\s\S]*?var\(--rubies-safe-top\)/)
