@@ -111,9 +111,6 @@ const enhanceSlider = (slider: HTMLInputElement) => {
   sync()
 }
 
-const findDialogByTitle = (title: string) => [...document.querySelectorAll<HTMLElement>('.dialog-card')]
-  .find((card) => card.querySelector('.dialog-header h2')?.textContent?.trim() === title)
-
 const enhanceMoveMoney = (card: HTMLElement) => {
   if (card.dataset.rubiesMoveEnhanced === 'true') return
   if (card.querySelector('.dialog-header h2')?.textContent?.trim() !== 'Move money') return
