@@ -1,0 +1,144 @@
+:root { --rubies-mobile-nav-height: 76px; }
+
+.budget-health-hud {
+  position: fixed;
+  z-index: 95;
+  top: 12px;
+  right: 16px;
+  width: min(330px, calc(100vw - 32px));
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-bright);
+  border-radius: 12px;
+  color: var(--text);
+  background: rgba(25,23,29,.97);
+  box-shadow: 0 14px 44px rgba(0,0,0,.42);
+  backdrop-filter: blur(18px);
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;
+  transition: opacity .16s ease, transform .16s ease;
+}
+.budget-health-hud.visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.budget-health-hud span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-align: left;
+}
+.budget-health-hud strong {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.budget-health-hud.positive { border-color: rgba(114,215,163,.68); background: rgba(24,53,41,.97); }
+.budget-health-hud.positive strong { color: #91e7b8; }
+.budget-health-hud.zero { border-color: var(--border-bright); }
+.budget-health-hud.negative { border-color: rgba(237,126,144,.9); background: rgba(65,20,30,.98); }
+.budget-health-hud.negative strong { color: #ffb0bd; }
+
+.kind-toggle .expense-kind.active {
+  color: #ffd5dc;
+  background: rgba(145,45,63,.34);
+  box-shadow: inset 0 0 0 1px rgba(237,126,144,.5);
+}
+.kind-toggle .income-kind.active {
+  color: #c6f7dc;
+  background: rgba(44,105,75,.34);
+  box-shadow: inset 0 0 0 1px rgba(114,215,163,.48);
+}
+
+@media (max-width: 820px) {
+  .plan-header,
+  .plan-header > div,
+  .month-navigation,
+  .header-actions { width: 100%; max-width: none; }
+
+  .month-navigation { min-width: 0; }
+  .month-navigation h1 { min-width: 0; }
+
+  .month-summary-grid {
+    position: static !important;
+    top: auto !important;
+  }
+
+  .budget-health-hud {
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    min-height: 46px;
+    border-radius: 11px;
+  }
+
+  .move-money-modal-backdrop {
+    inset: 0 0 var(--rubies-mobile-nav-height) 0 !important;
+    display: grid !important;
+    place-items: center !important;
+    padding: 14px !important;
+    overflow: hidden !important;
+    background: rgba(5,4,7,.74) !important;
+    backdrop-filter: blur(9px) !important;
+  }
+  .move-money-modal-card,
+  .move-money-modal-card.dialog-wide {
+    width: min(560px, 100%) !important;
+    height: auto !important;
+    max-height: calc(100dvh - var(--rubies-mobile-nav-height) - 28px) !important;
+    margin: 0 !important;
+    border: 1px solid var(--border-bright) !important;
+    border-radius: 18px !important;
+    background: #1a181e !important;
+    box-shadow: 0 30px 120px rgba(0,0,0,.55) !important;
+  }
+  .move-money-modal-card .dialog-header .icon-button { display: inline-grid !important; }
+
+  .transaction-mobile-backdrop,
+  .transaction-screen-backdrop {
+    inset: 0 0 var(--rubies-mobile-nav-height) 0 !important;
+  }
+
+  .transaction-mobile-screen .dialog-content,
+  .transaction-screen-card .dialog-content {
+    padding-bottom: 0 !important;
+  }
+  .transaction-mobile-screen form,
+  .transaction-screen-card form {
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+  .transaction-mobile-screen .dialog-actions,
+  .transaction-screen-card .dialog-actions {
+    position: sticky !important;
+    bottom: 0 !important;
+    width: calc(100% + 24px);
+    margin: auto -12px 0 !important;
+    padding: 12px !important;
+    border-top: 1px solid var(--border);
+    background: rgba(26,24,30,.98) !important;
+    box-shadow: 0 -10px 28px rgba(0,0,0,.3);
+  }
+  .transaction-mobile-screen .dialog-actions .secondary-button,
+  .transaction-screen-card .dialog-actions .secondary-button { display: none !important; }
+  .transaction-mobile-screen .dialog-actions .primary-button,
+  .transaction-screen-card .dialog-actions .primary-button {
+    width: 100%;
+    flex: 1 1 auto;
+    min-height: 50px;
+  }
+
+  .mobile-nav { bottom: 0; }
+}
+
+@media (min-width: 821px) {
+  .budget-health-hud { right: 18px; }
+}
