@@ -1,11 +1,9 @@
 # Rubies
 
 > [!NOTE]
-> **AI-driven development:** Rubies is built with substantial AI assistance across design, implementation, debugging, and documentation, under human direction and review. This is an intentional development workflow—not a claim of reduced quality—and it is disclosed here because the project's development process should be transparent.
+> **AI-driven development:** Rubies is built with substantial AI assistance across design, implementation, debugging, and documentation, under human direction and review. This is not a claim of poor quality, I just find it important to be clearly disclosed.
 
-Rubies is a self-hosted, single-user, local-first zero-based budgeting PWA. It is designed around one budget, one owner, simple accounts, category-based allocation, and data that stays under your control.
-
-Rubies runs as a static web application. Persistent budget data is encrypted in the browser before it is stored locally.
+Rubies is a self-hosted budgeting PWA. It is designed to be a simple, no-bullshit, straight to the point budgeting app that is entirely yours. So, basically a protest to YNAB's 100$ yearly plan.
 
 ## Quick start with Docker
 
