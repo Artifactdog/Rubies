@@ -1,11 +1,9 @@
 let lastReadyToAssign = 0
+const mobileMedia = window.matchMedia('(max-width: 820px)')
 
 const signedMoneyNumber = (text: string | null | undefined) => {
   if (!text) return 0
-  const normalized = text
-    .replace(/−/g, '-')
-    .replace(/[^0-9,.-]/g, '')
-    .replace(/,/g, '')
+  const normalized = text.replace(/−/g, '-').replace(/[^0-9,.-]/g, '').replace(/,/g, '')
   const value = Number.parseFloat(normalized)
   return Number.isFinite(value) ? value : 0
 }
@@ -44,7 +42,7 @@ const sliderLimitFor = (slider: HTMLInputElement) => {
         + moneyNumber(left?.querySelector('strong')?.textContent),
     )
   }
-  if (slider.closest('.transaction-amount-editor')) return Math.max(0, lastReadyToAssign / 100)
+  if (slider.closest('.transaction-amount-editor')) return Math.max(0, lastReadyToAssign)
   return 0
 }
 
@@ -104,12 +102,11 @@ const enhanceSlider = (slider: HTMLInputElement) => {
     event.preventDefault()
     setFromPointer(event)
   })
-  overlay.addEventListener('pointerup', (event) => {
+  const release = (event: PointerEvent) => {
     if (overlay.hasPointerCapture(event.pointerId)) overlay.releasePointerCapture(event.pointerId)
-  })
-  overlay.addEventListener('pointercancel', (event) => {
-    if (overlay.hasPointerCapture(event.pointerId)) overlay.releasePointerCapture(event.pointerId)
-  })
+  }
+  overlay.addEventListener('pointerup', release)
+  overlay.addEventListener('pointercancel', release)
   input.addEventListener('input', () => requestAnimationFrame(sync))
   sync()
 }
@@ -172,9 +169,8 @@ const enhanceMoveMoney = (card: HTMLElement) => {
     overlay.setAttribute('aria-valuenow', String(Math.min(value, max)))
     maxLabel.textContent = sourceMoneyText()
     sourceBalance.textContent = sourceMoneyText()
-    sourceBalanceBox.firstChild && (sourceBalanceBox.firstChild.textContent = 'Available from source: ')
+    if (sourceBalanceBox.firstChild) sourceBalanceBox.firstChild.textContent = 'Available from source: '
     submitButton.disabled = !valid
-
     ownError.hidden = value <= max
     ownError.textContent = value > max ? 'The selected source does not have enough available money.' : ''
     card.classList.toggle('move-reversed', isReverse())
@@ -198,9 +194,8 @@ const enhanceMoveMoney = (card: HTMLElement) => {
 
   directionButton.addEventListener('click', () => {
     card.dataset.moveDirection = isReverse() ? 'forward' : 'reverse'
-    requestAnimationFrame(sync)
+    sync()
   })
-
   overlay.addEventListener('pointerdown', (event) => {
     if (sourceMax() <= 0) return
     event.preventDefault()
@@ -212,19 +207,16 @@ const enhanceMoveMoney = (card: HTMLElement) => {
     event.preventDefault()
     setFromPointer(event)
   })
-  overlay.addEventListener('pointerup', (event) => {
+  const release = (event: PointerEvent) => {
     if (overlay.hasPointerCapture(event.pointerId)) overlay.releasePointerCapture(event.pointerId)
-  })
-  overlay.addEventListener('pointercancel', (event) => {
-    if (overlay.hasPointerCapture(event.pointerId)) overlay.releasePointerCapture(event.pointerId)
-  })
-
+  }
+  overlay.addEventListener('pointerup', release)
+  overlay.addEventListener('pointercancel', release)
   amountInput.addEventListener('input', () => requestAnimationFrame(sync))
   selects.forEach((select) => select.addEventListener('change', () => requestAnimationFrame(sync)))
 
   form.addEventListener('submit', (event) => {
     if (!isReverse() || form.dataset.rubiesReverseSubmitting === 'true') return
-
     const max = sourceMax()
     const value = moneyNumber(amountInput.value)
     if (value <= 0 || value > max || sourceSelect().value === destinationSelect().value) {
@@ -236,15 +228,12 @@ const enhanceMoveMoney = (card: HTMLElement) => {
 
     event.preventDefault()
     event.stopImmediatePropagation()
-
     const leftValue = selects[0].value
     const rightValue = selects[1].value
     form.dataset.rubiesReverseSubmitting = 'true'
     card.dataset.moveDirection = 'forward'
-    card.classList.add('move-submitting')
     dispatchSelect(selects[0], rightValue)
     dispatchSelect(selects[1], leftValue)
-
     window.setTimeout(() => {
       form.requestSubmit(submitButton)
       window.setTimeout(() => {
@@ -253,8 +242,7 @@ const enhanceMoveMoney = (card: HTMLElement) => {
         dispatchSelect(selects[1], rightValue)
         delete form.dataset.rubiesReverseSubmitting
         card.dataset.moveDirection = 'reverse'
-        card.classList.remove('move-submitting')
-        requestAnimationFrame(sync)
+        sync()
       }, 120)
     }, 0)
   }, true)
@@ -262,22 +250,29 @@ const enhanceMoveMoney = (card: HTMLElement) => {
   sync()
 }
 
-const mobileMedia = window.matchMedia('(max-width: 820px)')
+const enhanceDialogRoles = () => {
+  document.querySelectorAll<HTMLElement>('.dialog-card').forEach((card) => {
+    const title = card.querySelector('.dialog-header h2')?.textContent?.trim()
+    const backdrop = card.closest<HTMLElement>('.dialog-backdrop')
+    if (!backdrop) return
 
-const enhanceMobileTabScreen = (card: HTMLElement) => {
-  const title = card.querySelector('.dialog-header h2')?.textContent?.trim()
-  const backdrop = card.closest<HTMLElement>('.dialog-backdrop')
-  if (!backdrop) return
-
-  if (title === 'Settings & data') {
-    card.classList.add('mobile-tab-card', 'settings-screen-card')
-    backdrop.classList.add('mobile-tab-backdrop', 'settings-screen-backdrop')
-  }
-
-  if (title === 'New transaction') {
-    card.classList.add('mobile-tab-card', 'transaction-screen-card')
-    backdrop.classList.add('mobile-tab-backdrop', 'transaction-screen-backdrop')
-  }
+    if (title === 'Settings & data') {
+      card.classList.add('mobile-tab-card', 'settings-screen-card')
+      backdrop.classList.add('mobile-tab-backdrop', 'settings-screen-backdrop')
+    }
+    if (title === 'New transaction') {
+      card.classList.add('mobile-tab-card', 'transaction-screen-card', 'transaction-mobile-screen')
+      backdrop.classList.add('mobile-tab-backdrop', 'transaction-screen-backdrop', 'transaction-mobile-backdrop')
+      const buttons = card.querySelectorAll<HTMLButtonElement>('.kind-toggle button')
+      buttons[0]?.classList.add('expense-kind')
+      buttons[1]?.classList.add('income-kind')
+    }
+    if (title === 'Move money') {
+      card.classList.add('move-money-modal-card')
+      backdrop.classList.add('move-money-modal-backdrop')
+      enhanceMoveMoney(card)
+    }
+  })
 }
 
 const closeMobileTab = (selector?: string) => {
@@ -290,7 +285,6 @@ const syncMobileNav = () => {
   if (!nav) return
   const buttons = [...nav.querySelectorAll<HTMLButtonElement>('button')]
   if (buttons.length < 4) return
-
   const settingsLabel = buttons[3].querySelector('span')
   if (settingsLabel) settingsLabel.textContent = 'Settings'
   if (!mobileMedia.matches) return
@@ -302,47 +296,106 @@ const syncMobileNav = () => {
   else buttons[0].classList.add('active')
 }
 
-const syncReadyToAssignState = () => {
-  const card = document.querySelector<HTMLElement>('.rta-card')
-  if (!card) return
-  const raw = card.querySelector('strong')?.textContent ?? ''
-  const negative = /[-−]/.test(raw)
-  const value = moneyNumber(raw)
-  lastReadyToAssign = (negative ? -value : value) * 100
-  card.classList.toggle('rta-negative', negative && value > 0)
-  card.classList.toggle('rta-zero', value === 0)
-  card.classList.toggle('rta-positive', !negative && value > 0)
+const syncNavHeight = () => {
+  const nav = document.querySelector<HTMLElement>('.mobile-nav')
+  const height = mobileMedia.matches && nav ? Math.ceil(nav.getBoundingClientRect().height) : 0
+  document.documentElement.style.setProperty('--rubies-mobile-nav-height', `${height}px`)
+}
+
+const ensureHud = () => {
+  let hud = document.querySelector<HTMLButtonElement>('.budget-health-hud')
+  if (hud) return hud
+  hud = document.createElement('button')
+  hud.type = 'button'
+  hud.className = 'budget-health-hud'
+  hud.innerHTML = '<span>Ready to assign</span><strong></strong>'
+  hud.addEventListener('click', () => {
+    document.querySelector<HTMLElement>('.rta-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  })
+  document.body.appendChild(hud)
+  return hud
+}
+
+const syncBudgetHealth = () => {
+  const source = document.querySelector<HTMLElement>('.rta-card')
+  const hud = ensureHud()
+  if (!source) {
+    hud.classList.remove('visible')
+    return
+  }
+
+  const amountText = source.querySelector('strong')?.textContent?.trim() ?? ''
+  const amount = signedMoneyNumber(amountText)
+  lastReadyToAssign = amount
+
+  source.classList.toggle('rta-negative', amount < 0)
+  source.classList.toggle('rta-zero', amount === 0)
+  source.classList.toggle('rta-positive', amount > 0)
+  const strong = hud.querySelector('strong')
+  if (strong && strong.textContent !== amountText) strong.textContent = amountText
+  hud.classList.toggle('positive', amount > 0)
+  hud.classList.toggle('zero', amount === 0)
+  hud.classList.toggle('negative', amount < 0)
+
+  const rect = source.getBoundingClientRect()
+  const sourceVisible = rect.bottom > 0 && rect.top < window.innerHeight
+  const anyDialog = Boolean(document.querySelector('.dialog-backdrop'))
+  hud.classList.toggle('visible', !sourceVisible && !anyDialog)
 }
 
 const enhance = () => {
+  syncBudgetHealth()
+  syncNavHeight()
   document.querySelectorAll<HTMLInputElement>('.money-slider').forEach(enhanceSlider)
-  document.querySelectorAll<HTMLElement>('.dialog-card').forEach((card) => {
-    enhanceMoveMoney(card)
-    enhanceMobileTabScreen(card)
-  })
-  syncReadyToAssignState()
+  enhanceDialogRoles()
   syncMobileNav()
 }
 
-export const installUiEnhancements = () => {
+let enhanceFrame = 0
+const scheduleEnhance = () => {
+  if (enhanceFrame) return
+  enhanceFrame = requestAnimationFrame(() => {
+    enhanceFrame = 0
+    enhance()
+  })
+}
+
+let viewportFrame = 0
+const scheduleViewportSync = () => {
+  if (viewportFrame) return
+  viewportFrame = requestAnimationFrame(() => {
+    viewportFrame = 0
+    syncBudgetHealth()
+  })
+}
+
+const handleMobileNavClick = (event: Event) => {
+  if (!mobileMedia.matches) return
+  const target = event.target as Element | null
+  const button = target?.closest<HTMLButtonElement>('.mobile-nav button')
+  if (!button) return
+  const buttons = [...document.querySelectorAll<HTMLButtonElement>('.mobile-nav button')]
+  const index = buttons.indexOf(button)
+  if (index === 0 || index === 1) closeMobileTab()
+  if (index === 2) closeMobileTab('.settings-screen-card')
+  if (index === 3) closeMobileTab('.transaction-screen-card')
+}
+
+export const installUiRuntime = () => {
   enhance()
 
-  const observer = new MutationObserver(() => requestAnimationFrame(enhance))
-  observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true })
-
   document.addEventListener('click', (event) => {
-    if (!mobileMedia.matches) return
-    const target = event.target as Element | null
-    const button = target?.closest<HTMLButtonElement>('.mobile-nav button')
-    if (!button) return
-
-    const buttons = [...document.querySelectorAll<HTMLButtonElement>('.mobile-nav button')]
-    const index = buttons.indexOf(button)
-    if (index === 0 || index === 1) closeMobileTab()
-    if (index === 2) closeMobileTab('.settings-screen-card')
-    if (index === 3) closeMobileTab('.transaction-screen-card')
-    requestAnimationFrame(syncMobileNav)
+    handleMobileNavClick(event)
+    scheduleEnhance()
   }, true)
-
-  mobileMedia.addEventListener('change', () => requestAnimationFrame(enhance))
+  document.addEventListener('change', scheduleEnhance, true)
+  document.addEventListener('input', scheduleEnhance, true)
+  window.addEventListener('keydown', scheduleEnhance, true)
+  window.addEventListener('scroll', scheduleViewportSync, { passive: true })
+  window.addEventListener('resize', () => {
+    syncNavHeight()
+    scheduleViewportSync()
+  }, { passive: true })
+  window.addEventListener('orientationchange', scheduleEnhance, { passive: true })
+  mobileMedia.addEventListener('change', scheduleEnhance)
 }
