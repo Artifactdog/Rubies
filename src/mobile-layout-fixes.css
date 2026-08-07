@@ -1,4 +1,11 @@
-/* 2026.8.7.4: targeted layout fixes only. No runtime observers or DOM polling. */
+/* Mobile viewport and iOS standalone layout. No observers, polling, or DOM mutation loops. */
+
+:root {
+  --rubies-safe-top: env(safe-area-inset-top, 0px);
+  --rubies-safe-right: env(safe-area-inset-right, 0px);
+  --rubies-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --rubies-safe-left: env(safe-area-inset-left, 0px);
+}
 
 /* Rubies is a single-budget app. Keep the legacy state name only for import/export
    compatibility, but remove plan naming from the product UI. */
@@ -10,28 +17,105 @@
 }
 
 @media (max-width: 820px) {
-  /* Force the plan header to use the actual viewport width instead of inheriting
-     the narrower implicit grid width that produced a dead strip on the right. */
-  .plan-header {
-    width: 100vw !important;
-    max-width: none !important;
-    margin-right: 0 !important;
-    margin-left: -10px !important;
-    padding-right: 10px !important;
-    padding-left: 10px !important;
+  html,
+  body,
+  #root,
+  .app-shell,
+  .main-content {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
   }
+
+  html,
+  body {
+    overflow-x: clip;
+  }
+
+  body {
+    min-height: 100dvh;
+  }
+
+  /* viewport-fit=cover deliberately lets iOS use the full screen. Consume the
+     safe area here so standalone PWAs never paint controls under the status bar
+     or Dynamic Island. */
+  .app-shell {
+    min-height: 100dvh;
+    padding-top: var(--rubies-safe-top);
+  }
+
+  .main-content {
+    margin: 0 !important;
+    padding-bottom: calc(var(--rubies-mobile-nav-height, 76px) + 10px) !important;
+  }
+
+  .view-shell {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding-right: max(12px, var(--rubies-safe-right)) !important;
+    padding-left: max(12px, var(--rubies-safe-left)) !important;
+    padding-bottom: calc(var(--rubies-mobile-nav-height, 76px) + 18px) !important;
+  }
+
+  /* Do not use 100vw or negative margins here. iOS has separate visual/layout
+     viewport concepts and those hacks caused the persistent dead strip. */
+  .plan-header,
   .plan-header > div,
   .plan-header .month-navigation,
   .plan-header .header-actions {
     width: 100% !important;
     min-width: 0 !important;
-    max-width: none !important;
+    max-width: 100% !important;
+    margin-right: 0 !important;
+    margin-left: 0 !important;
+    padding-right: 0 !important;
+    padding-left: 0 !important;
   }
+
+  .plan-header {
+    justify-self: stretch;
+  }
+
+  .plan-header .month-navigation {
+    display: grid !important;
+    grid-template-columns: 40px minmax(0, 1fr) 40px minmax(84px, auto);
+    align-items: center;
+    gap: 7px;
+  }
+
+  .plan-header .month-navigation .icon-button {
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px;
+  }
+
+  .plan-header .month-navigation h1 {
+    width: auto !important;
+    min-width: 0 !important;
+    margin: 0;
+    overflow: hidden;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .plan-header .today-button {
+    width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+  }
+
   .plan-header .header-actions {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     justify-self: stretch !important;
+    gap: 6px;
   }
+
   .plan-header .header-actions > button {
     width: 100% !important;
+    min-width: 0 !important;
     max-width: none !important;
   }
 
@@ -54,22 +138,83 @@
     border-radius: 11px;
   }
 
-  /* iOS/WebKit date inputs retain an intrinsic minimum width unless explicitly
-     constrained. Keep every transaction field inside the visible screen. */
+  /* Full-screen mobile tabs and dialogs are fixed-position layers, so they must
+     consume safe areas independently of the app shell. */
+  .mobile-tab-backdrop,
+  .transaction-screen-backdrop,
+  .transaction-mobile-backdrop,
+  .settings-screen-backdrop {
+    top: var(--rubies-safe-top) !important;
+    right: 0 !important;
+    left: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .move-money-modal-backdrop {
+    top: var(--rubies-safe-top) !important;
+    right: 0 !important;
+    left: 0 !important;
+  }
+
+  .budget-health-hud {
+    top: calc(var(--rubies-safe-top) + 8px) !important;
+    right: max(8px, var(--rubies-safe-right)) !important;
+    left: max(8px, var(--rubies-safe-left)) !important;
+    width: auto !important;
+  }
+
+  /* iOS date inputs keep an intrinsic inline size unless both the grid and the
+     native control are constrained. appearance:none retains the date picker on
+     tap while preventing WebKit from forcing its own oversized field chrome. */
+  .transaction-screen-card,
+  .transaction-mobile-screen,
+  .transaction-screen-card .dialog-content,
+  .transaction-mobile-screen .dialog-content,
+  .transaction-screen-card form,
+  .transaction-mobile-screen form,
   .transaction-screen-card .form-grid,
   .transaction-mobile-screen .form-grid,
-  .transaction-screen-card .form-grid > label,
-  .transaction-mobile-screen .form-grid > label {
+  .transaction-screen-card .form-grid > *,
+  .transaction-mobile-screen .form-grid > * {
     width: 100% !important;
     min-width: 0 !important;
     max-width: 100% !important;
+    box-sizing: border-box;
   }
+
+  .transaction-screen-card .form-grid,
+  .transaction-mobile-screen .form-grid {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    overflow: hidden;
+  }
+
   .transaction-screen-card input[type="date"],
   .transaction-mobile-screen input[type="date"] {
     display: block !important;
+    inline-size: 100% !important;
     width: 100% !important;
+    min-inline-size: 0 !important;
     min-width: 0 !important;
+    max-inline-size: 100% !important;
     max-width: 100% !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .transaction-screen-card input[type="date"]::-webkit-date-and-time-value,
+  .transaction-mobile-screen input[type="date"]::-webkit-date-and-time-value {
+    width: 100%;
+    min-width: 0;
+    text-align: left;
+  }
+
+  .transaction-screen-card input[type="date"]::-webkit-calendar-picker-indicator,
+  .transaction-mobile-screen input[type="date"]::-webkit-calendar-picker-indicator {
+    flex: 0 0 auto;
+    margin: 0;
   }
 
   /* Removing Cancel must also remove the desktop split-layout placeholder and
@@ -79,7 +224,9 @@
     display: block !important;
   }
   .transaction-screen-card .dialog-actions.split-actions > span,
-  .transaction-mobile-screen .dialog-actions.split-actions > span {
+  .transaction-mobile-screen .dialog-actions.split-actions > span,
+  .transaction-screen-card .dialog-actions .secondary-button,
+  .transaction-mobile-screen .dialog-actions .secondary-button {
     display: none !important;
   }
   .transaction-screen-card .dialog-actions.split-actions > div,
@@ -95,12 +242,43 @@
     max-width: none !important;
     margin: 0 !important;
   }
+
+  /* The safe-area region is part of the navigation's painted button cells, not
+     an extra blank strip below them. This keeps controls above the home gesture
+     while visually filling the bottom edge. */
+  .mobile-nav {
+    right: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    padding-top: 6px !important;
+    padding-right: max(8px, var(--rubies-safe-right)) !important;
+    padding-bottom: 0 !important;
+    padding-left: max(8px, var(--rubies-safe-left)) !important;
+  }
+
+  .mobile-nav button {
+    min-height: calc(58px + var(--rubies-safe-bottom)) !important;
+    padding-top: 4px !important;
+    padding-bottom: var(--rubies-safe-bottom) !important;
+    align-content: center;
+  }
 }
 
-@media (max-width: 560px) {
-  .plan-header {
-    margin-left: -8px !important;
-    padding-right: 8px !important;
-    padding-left: 8px !important;
+@media (max-width: 430px) {
+  .view-shell {
+    padding-right: max(8px, var(--rubies-safe-right)) !important;
+    padding-left: max(8px, var(--rubies-safe-left)) !important;
+  }
+
+  .plan-header .month-navigation {
+    grid-template-columns: 38px minmax(0, 1fr) 38px minmax(78px, auto);
+    gap: 6px;
+  }
+
+  .plan-header .month-navigation .icon-button {
+    width: 38px !important;
+    height: 38px !important;
+    min-width: 38px;
   }
 }
