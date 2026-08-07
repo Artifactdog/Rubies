@@ -4,8 +4,7 @@ import App from './App'
 import './styles.css'
 import './mobile-polish.css'
 import './ui-stability.css'
-import { installUiEnhancements } from './uiEnhancements'
-import { installUiStability } from './ui-stability'
+import { installUiRuntime } from './uiRuntime'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -13,8 +12,7 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 )
 
-installUiEnhancements()
-installUiStability()
+installUiRuntime()
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
