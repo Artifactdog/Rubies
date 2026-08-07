@@ -1,51 +1,165 @@
 # Rubies architecture
 
-## Current shape
+Rubies is a static React PWA designed for a single self-hosted user and a single budget. The browser contains the application logic, budgeting engine, encrypted persistence, import/export logic, and UI state. Nginx serves the compiled application and does not run a Rubies application backend.
 
-Rubies 2026.8.6.3 is a static React PWA served by Nginx. It requires no external cloud account, database, or runtime service.
+## Runtime shape
 
-### Layers
+```text
+Browser
+├─ React application
+├─ budgeting/domain calculations
+├─ in-memory undo/redo state
+├─ encrypted local vault
+├─ import/export processing
+└─ service worker cache
 
-- `src/domain.ts` — version-5 data model, integer-money calculations, target recommendations, Ready to Assign, migration, and nYNAB import
-- `src/vault.ts` — PBKDF2 password derivation and AES-GCM encrypted local persistence
-- `src/store.ts` — assignments, money movement, target snoozing, categories, groups, simple accounts, and transactions
-- `src/App.tsx` — password gate, responsive workspace, confirmed allocation editing, undo, and allocation history, dialogs, import, and demo mode
-- `tests/domain.test.mjs` — schedule, future-month funding, migration, snoozing, and nYNAB import regression tests
-- `public/sw.js` — PWA app-shell caching
-- `nginx.conf` — SPA routing, static caching, and security headers
+Nginx
+└─ static application shell + SPA routing + security headers
+```
+
+There is currently no Rubies database server, sync service, HTTP session store, or multi-user authorization layer.
+
+## Single-budget invariant
+
+Rubies intentionally exposes one budget only. There is no budget picker, plan switcher, or user-facing budget name.
+
+The version-5 serialized model still contains a legacy `name` field so older Rubies files and nYNAB imports remain compatible. Imported source names may also be retained as provenance. Neither is part of the current product navigation model.
+
+One encrypted Rubies vault is stored per browser origin/profile. A different hostname, browser profile, browser, or device is a separate local installation unless data is moved manually with an export/import.
+
+## Source layers
+
+- `src/domain.ts` — version-5 budget schema, money calculations, targets, Ready to Assign, migrations, and nYNAB import
+- `src/store.ts` — state mutations for assignments, money movement, categories, groups, accounts, transactions, snoozing, undo/redo, and allocation history
+- `src/vault.ts` — encrypted browser-local persistence
+- `src/App.tsx` — access gate, budget/account views, dialogs, transaction and allocation workflows, import/export, settings, and demo mode
+- `src/uiRuntime.ts` — small event-driven progressive UI enhancements that are difficult to express cleanly in the existing component tree
+- `src/styles.css` — base desktop/responsive design
+- `src/mobile-polish.css`, `src/ui-stability.css`, and `src/mobile-layout-fixes.css` — mobile and browser-specific layout corrections
+- `tests/*.test.mjs` — budgeting, migration, import, performance-regression, and layout-regression tests
+- `public/sw.js` — PWA application-shell cache
+- `nginx.conf` — static serving, SPA fallback, caching rules, CSP, and browser hardening headers
+
+### UI runtime constraint
+
+`src/uiRuntime.ts` is event-driven and `requestAnimationFrame`-throttled. It must not use document-wide `MutationObserver` loops or DOM polling. Those patterns previously caused severe Chromium responsiveness regressions and are guarded against by regression tests.
+
+React remains the owner of application and budgeting state. UI-runtime helpers must not become a second state-management system.
 
 ## Money representation
 
-Every monetary value is stored as an integer number of minor currency units. For USD, `125000` means `$1,250.00`.
+All Rubies monetary values use integer minor currency units.
 
-nYNAB exports use milliunits. The importer converts them according to `currency_format.decimal_digits`; for a two-decimal currency, `14520000` nYNAB milliunits become `1452000` Rubies minor units, or `14,520.00`.
-
-## Version-5 budget model
-
-Accounts intentionally have no type. Every account participates in the budget, and its balance is the sum of its transactions.
-
-Transactions intentionally have no cleared state or credit-card behavior. A transaction either belongs to a category or has a null category and therefore affects Ready to Assign.
-
-Ready to Assign starts from uncategorized account cash flow and cumulative assignments. For past months, later assignment deficits consume older unassigned funding lots first, so revisiting June cannot resurrect money that was subsequently assigned in July. Current or latest months still show a negative value when the plan is over-assigned.
-
-A category's available balance is:
+For a two-decimal currency:
 
 ```text
-all prior assignments
-+ all prior categorized activity
-+ selected-month assignment
-+ selected-month categorized activity
+125000 = 1,250.00
+6500   = 65.00
 ```
 
-Moving money changes assignments only. It never changes account balances or creates transactions.
+Using integers avoids floating-point drift in assignments, transaction sums, category balances, and target calculations.
 
-Confirmed assignment changes, moves, and auto-assign operations append a persistent allocation event. Imported nYNAB budgets receive month-level assignment snapshots because the export does not contain the original click-by-click allocation log. The in-memory store keeps reversible state snapshots for undo and redo; restoring a snapshot also restores the corresponding allocation log.
+nYNAB exports use milliunits. Import converts those values according to the export's currency decimal precision before they enter the Rubies model.
 
-Because Rubies has only cash-style accounts, a negative category balance does not roll into the next month. The category starts the next month at zero and the deficit is deducted from the next month’s Ready to Assign. This matches the month snapshots in nYNAB exports.
+## Budget state
 
-## Target recommendations
+The current serialized schema is `BudgetState.version = 5`.
 
-Every target result contains distinct values for:
+Important collections are:
+
+```text
+groups
+categories
+accounts
+transactions
+months
+allocationEvents
+```
+
+Each month stores category assignments. Category activity is derived from categorized transactions rather than duplicated into the month record.
+
+Old Rubies payloads are normalized when unlocked or imported. Removed fields such as account notes, transaction memos, and month notes are discarded. Category notes are retained.
+
+## Accounts
+
+Rubies has one account type.
+
+An account contains an ID, name, and optional closed state. There is no separate cash, checking, savings, credit-card, tracking, or off-budget behavior in the domain model.
+
+An account balance is the sum of its transactions.
+
+Closing an account hides it from normal new-transaction workflows without deleting its history.
+
+## Transactions
+
+A transaction contains:
+
+```text
+accountId
+date
+payee
+categoryId
+amount
+```
+
+`payee` may be an empty string. Transaction notes do not exist.
+
+A negative amount is an expense. A positive amount is income.
+
+Categorized transactions change category activity. A transaction whose `categoryId` is `null` contributes to or consumes Ready to Assign.
+
+Rubies intentionally has no cleared/uncleared state, reconciliation state, credit-card payment workflow, or account-type-specific transaction behavior.
+
+## Category balances
+
+For a selected month, category available is based on prior carried positive balance plus the selected month's assignment and categorized activity.
+
+Conceptually:
+
+```text
+carried positive available from prior months
++ selected-month assignment
++ selected-month categorized activity
+= selected-month available
+```
+
+Negative category balances do not roll forward as negative category balances. Cash overspending is absorbed by the following month's Ready to Assign instead.
+
+This keeps the category model cash-style while preserving the accounting behavior expected by imported nYNAB month snapshots.
+
+## Ready to Assign
+
+Ready to Assign starts with cumulative uncategorized cash flow, subtracts cumulative assignments, and accounts for prior cash overspending.
+
+Past-month display needs one additional rule: money that was unassigned in an earlier month may have been assigned in a later month. Revisiting the earlier month must not resurrect that money.
+
+Rubies therefore treats positive historical Ready to Assign changes as funding lots. Later deficits consume the oldest available lots first. A historical month shows only the portion of its funding that remains genuinely unassigned after later budget activity.
+
+Current and future months can still show a negative Ready to Assign value when the budget is over-assigned.
+
+## Assignments and money movement
+
+Assignments are month-specific values stored on `BudgetMonth.assignments`.
+
+Moving money changes assignments only. It does not create transactions and does not alter account balances.
+
+The user-facing assignment editor uses a draft value. Typing or dragging does not change the budget until the user confirms the edit.
+
+Confirmed assignment changes, Move Money operations, and Auto-assign operations create `allocationEvents`. This provides allocation history independently from transaction history.
+
+The store also retains reversible state snapshots for Undo and Redo. Undoing an allocation restores the corresponding budget and allocation-history state together.
+
+## Targets
+
+Categories can have one of three target behaviors:
+
+- set aside another amount on scheduled dates
+- refill available balance on scheduled dates
+- build a total balance by a deadline
+
+Schedules can be recurring weekly, monthly, or yearly intervals, every-N-period intervals, or explicit custom dates. Deadline targets can stop after one deadline, repeat regularly, or use custom future deadlines.
+
+Target calculation returns separate values for:
 
 ```text
 requiredThisMonth
@@ -54,32 +168,75 @@ overallLeft
 progress
 ```
 
-Recurring set-aside targets calculate `requiredThisMonth` from the number of due occurrences in the selected month. Refill targets account for carried available money. Deadline targets divide the remaining balance by the number of months left, so selecting a later future month produces a larger recommendation when nothing was funded in the intervening months.
+This separation is intentional. `requiredThisMonth` is the recommendation for the selected month; it is not simply the target's lifetime total.
 
-Snoozed months produce a zero recommendation without deleting the target.
+Deadline targets divide remaining need across the months still available before the active deadline. Recommendations therefore recalculate as the selected month changes.
 
-## nYNAB import boundary
+Snoozing suppresses the recommendation for one month without deleting the target.
 
-The importer recognizes the `data.plan` JSON shape and maps:
+## nYNAB import
 
-- accounts to the single Rubies account model
-- user categories and groups while dropping internal system categories
-- month category `budgeted` values to Rubies assignments
-- optional transaction payees, categories, transfers, and amounts
-- nYNAB goal cadence fields to Rubies schedules and deadlines
-- `goal_snoozed_at` month snapshots to target snoozing
-- subtransactions to flattened normal transactions
+The nYNAB importer recognizes API-style JSON containing `data.plan`.
 
-Account balance adjustments are added only when the imported transaction sum does not match the exported account balance.
+It maps:
 
-Scheduled transactions are not yet represented and result in a visible warning.
+- accounts into the single Rubies account model
+- user category groups and categories while excluding internal system categories
+- category notes and hidden state
+- month `budgeted` values into Rubies assignments
+- transactions, optional payees, categories, income, and imported transfers
+- nYNAB goal cadence/deadline fields into Rubies target schedules
+- snoozed goal month data into target snoozing
+- split subtransactions into ordinary Rubies transaction entries
+
+If imported transactions do not sum to an exported account balance, Rubies adds an explicit imported balance-adjustment transaction so the resulting account total matches the source data.
+
+Because nYNAB exports do not contain the original click-by-click allocation action log, imported allocation history is represented as month-level assignment snapshots rather than invented individual actions.
+
+Scheduled transactions are not modeled yet and produce an import warning.
+
+Import replaces the current budget only after explicit user confirmation.
 
 ## Local vault
 
-Persistent state is serialized, encrypted with AES-256-GCM, and stored in browser localStorage. The encryption key is derived from the password using PBKDF2-SHA-256 with a random salt and 310,000 iterations. A random 96-bit IV is generated for every save.
+Persistent state is JSON-serialized and encrypted before being written to browser `localStorage`.
 
-Older vault payloads are normalized to version 5 when unlocked. Account notes, transaction memos, and month notes are intentionally discarded; category notes are retained.
+`src/vault.ts` currently uses:
 
-## Threat boundary
+```text
+PBKDF2-SHA-256
+310,000 iterations
+16-byte random salt per saved payload
+AES-256-GCM
+12-byte random IV per saved payload
+```
 
-The vault protects local data at rest. It does not hide the static application shell, replace HTTPS, authenticate at the reverse proxy, defend a compromised browser extension, or provide multi-user server authorization.
+The password is not persisted. While Rubies is unlocked, the password and decrypted budget necessarily exist in page memory so changes can be re-encrypted and saved.
+
+Writes are serialized through an in-memory write queue so overlapping saves do not race each other.
+
+See [`SECURITY.md`](../SECURITY.md) for the threat boundary.
+
+## PWA and deployment
+
+Vite builds the React application into static assets. The Docker image serves those assets through Nginx.
+
+The service worker caches the application shell for PWA/offline startup. The encrypted budget itself remains browser-local data rather than service-worker cache data.
+
+Nginx provides SPA routing and browser hardening headers. It does not authenticate users at the HTTP layer.
+
+For a private network endpoint, put Rubies behind HTTPS and an authenticating reverse proxy or equivalent server-side access-control layer.
+
+## Current architectural boundaries
+
+Rubies is deliberately local and single-user today. The architecture does not currently provide:
+
+- automatic cross-device synchronization
+- a server database
+- server-side Rubies accounts or sessions
+- multi-user or household permissions
+- scheduled transaction execution
+- native split-transaction editing after import
+- reconciliation/cleared workflows
+
+These are product boundaries, not hidden behaviors in the current model.
