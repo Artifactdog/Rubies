@@ -37,8 +37,18 @@ test('mobile dialog contract pins confirmation actions independently of form hei
   assert.match(css, /overflow:\s*hidden\s*!important/)
   assert.match(css, /> form \{[\s\S]*overflow-y:\s*auto\s*!important/)
   assert.match(css, /> form > \.dialog-actions \{[\s\S]*position:\s*absolute\s*!important/)
-  assert.match(css, /padding:\s*16px 16px 92px\s*!important/)
+  assert.match(css, /padding:\s*16px 16px 168px\s*!important/)
+  assert.match(css, /scroll-padding-bottom:\s*168px/)
   assert.match(css, /inset:\s*auto 0 0\s*!important/)
+})
+
+test('mobile dialog content can scroll the final field comfortably above the footer', () => {
+  assert.match(css, /> :not\(\.dialog-actions\):last-of-type \{[\s\S]*margin-block-end:\s*24px\s*!important/)
+})
+
+test('mobile confirmation actions do not advertise physical keyboard hints', () => {
+  assert.match(componentSource('AssignmentDialog', 'CategoryRow'), /Save assignment\s*<kbd>Enter<\/kbd>/)
+  assert.match(css, /\.dialog-actions kbd \{[\s\S]*display:\s*none\s*!important/)
 })
 
 test('generic mobile sheets stay above bottom navigation', () => {

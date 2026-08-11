@@ -39,8 +39,15 @@
     overflow-y: auto !important;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
-    padding: 16px 16px 92px !important;
-    scroll-padding-bottom: 100px;
+    box-sizing: border-box !important;
+    padding: 16px 16px 168px !important;
+    scroll-padding-bottom: 168px;
+  }
+
+  /* Give the final field enough breathing room to sit fully above the pinned
+     footer instead of ending flush behind it. */
+  .dialog-card .dialog-content:has(> form > .dialog-actions) > form > :not(.dialog-actions):last-of-type {
+    margin-block-end: 24px !important;
   }
 
   /* This is deliberately absolute rather than sticky. Sticky only starts
@@ -78,6 +85,12 @@
     min-block-size: 46px !important;
   }
 
+  /* Keyboard shortcuts remain functional, but phone UI should not advertise
+     Enter/Cmd/etc. unless the user is actually in a keyboard-oriented layout. */
+  .dialog-actions kbd {
+    display: none !important;
+  }
+
   /* Short, single-action creation dialogs should still present a proper full
      width confirmation target on phones. */
   .dialog-card .dialog-content:has(> form > .dialog-actions) > form > .dialog-actions > .primary-button:only-child {
@@ -97,8 +110,9 @@
     block-size: 100% !important;
     min-block-size: 0 !important;
     overflow-y: auto !important;
-    padding: 16px 16px 92px !important;
-    scroll-padding-bottom: 100px;
+    box-sizing: border-box !important;
+    padding: 16px 16px 168px !important;
+    scroll-padding-bottom: 168px;
   }
 
   .move-money-modal-card .dialog-content:has(> form > .dialog-actions) > form > .dialog-actions {
