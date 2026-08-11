@@ -35,11 +35,19 @@ test('mobile dialog contract pins confirmation actions independently of form hei
   assert.match(main, /import '\.\/mobile-dialog-contract\.css'/)
   assert.match(css, /\.dialog-content:has\(> form > \.dialog-actions\)/)
   assert.match(css, /overflow:\s*hidden\s*!important/)
-  assert.match(css, /> form \{[\s\S]*overflow-y:\s*auto\s*!important/)
+  assert.match(css, /> form \{[\s\S]*overflow-y:\s*scroll\s*!important/)
   assert.match(css, /> form > \.dialog-actions \{[\s\S]*position:\s*absolute\s*!important/)
   assert.match(css, /padding:\s*16px 16px 168px\s*!important/)
   assert.match(css, /scroll-padding-bottom:\s*168px/)
   assert.match(css, /inset:\s*auto 0 0\s*!important/)
+})
+
+test('mobile dialogs own scrolling instead of leaking gestures to Plan or Accounts', () => {
+  assert.match(css, /html:has\(\.dialog-backdrop\),[\s\S]*body:has\(\.dialog-backdrop\)[\s\S]*overflow:\s*hidden\s*!important/)
+  assert.match(css, /body:has\(\.dialog-backdrop\) #root,[\s\S]*\.app-shell[\s\S]*overflow:\s*hidden\s*!important/)
+  assert.match(css, /block-size:\s*100%\s*!important/)
+  assert.match(css, /touch-action:\s*pan-y\s*!important/)
+  assert.match(css, /overscroll-behavior-y:\s*contain\s*!important/)
 })
 
 test('mobile dialog content can scroll the final field comfortably above the footer', () => {

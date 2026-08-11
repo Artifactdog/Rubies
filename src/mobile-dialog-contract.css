@@ -1,8 +1,27 @@
 /* Mobile confirmation-dialog contract.
-   Any mobile create/edit flow that requires confirmation must keep its action
-   footer visible above the bottom navigation while only the form body scrolls. */
+   Any mobile create/edit flow that requires confirmation must own scrolling,
+   keep its action footer visible above the bottom navigation, and never allow
+   touch gestures to leak through to the page behind it. */
 
 @media (max-width: 820px) {
+  /* A visible dialog owns the viewport. This is intentionally broader than the
+     New/Settings screen rules: generic edit/create sheets must also prevent the
+     Plan/Accounts document from scrolling underneath them. */
+  html:has(.dialog-backdrop),
+  body:has(.dialog-backdrop) {
+    block-size: 100dvh !important;
+    min-block-size: 100dvh !important;
+    overflow: hidden !important;
+    overscroll-behavior: none !important;
+  }
+
+  body:has(.dialog-backdrop) #root,
+  body:has(.dialog-backdrop) .app-shell {
+    block-size: 100dvh !important;
+    min-block-size: 0 !important;
+    overflow: hidden !important;
+  }
+
   /* Generic confirmation sheets. New transaction and Settings are dedicated
      mobile tab surfaces and keep their own layout rules. */
   .dialog-backdrop:not(:has(.settings-body)):not(:has(.kind-toggle)):not(.move-money-modal-backdrop) {
@@ -12,20 +31,32 @@
     justify-content: center !important;
     padding: max(8px, env(safe-area-inset-top, 0px)) 0 0 !important;
     overflow: hidden !important;
+    overscroll-behavior: none !important;
   }
 
   .dialog-backdrop:not(:has(.settings-body)):not(:has(.kind-toggle)):not(.move-money-modal-backdrop) > .dialog-card {
     inline-size: 100% !important;
     max-inline-size: 100% !important;
+    block-size: 100% !important;
+    min-block-size: 0 !important;
     max-block-size: 100% !important;
     margin: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
     border-radius: 18px 18px 0 0 !important;
   }
 
-  /* The content viewport itself does not scroll. A form inside it owns the
-     scroll so its action row can be pinned independently. */
+  .dialog-backdrop:not(:has(.settings-body)):not(:has(.kind-toggle)):not(.move-money-modal-backdrop) > .dialog-card > .dialog-header {
+    flex: 0 0 auto !important;
+  }
+
+  /* The content viewport itself does not scroll. The form receives a definite
+     remaining height and is the only vertical scroll owner. */
   .dialog-card .dialog-content:has(> form > .dialog-actions) {
     position: relative !important;
+    flex: 1 1 auto !important;
+    block-size: auto !important;
     min-block-size: 0 !important;
     overflow: hidden !important;
     padding: 0 !important;
@@ -36,8 +67,9 @@
     min-block-size: 0 !important;
     max-block-size: 100% !important;
     overflow-x: hidden !important;
-    overflow-y: auto !important;
-    overscroll-behavior: contain;
+    overflow-y: scroll !important;
+    overscroll-behavior-y: contain !important;
+    touch-action: pan-y !important;
     -webkit-overflow-scrolling: touch;
     box-sizing: border-box !important;
     padding: 16px 16px 168px !important;
@@ -91,14 +123,12 @@
     display: none !important;
   }
 
-  /* Short, single-action creation dialogs should still present a proper full
-     width confirmation target on phones. */
   .dialog-card .dialog-content:has(> form > .dialog-actions) > form > .dialog-actions > .primary-button:only-child {
     inline-size: 100% !important;
   }
 
   /* Move Money keeps its centered modal presentation, but uses the same
-     always-visible footer contract. */
+     isolated scroll ownership and always-visible footer contract. */
   .move-money-modal-card .dialog-content:has(> form > .dialog-actions) {
     position: relative !important;
     min-block-size: 0 !important;
@@ -109,7 +139,10 @@
   .move-money-modal-card .dialog-content:has(> form > .dialog-actions) > form {
     block-size: 100% !important;
     min-block-size: 0 !important;
-    overflow-y: auto !important;
+    overflow-y: scroll !important;
+    overscroll-behavior-y: contain !important;
+    touch-action: pan-y !important;
+    -webkit-overflow-scrolling: touch;
     box-sizing: border-box !important;
     padding: 16px 16px 168px !important;
     scroll-padding-bottom: 168px;
