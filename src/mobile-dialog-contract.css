@@ -1,0 +1,114 @@
+/* Mobile confirmation-dialog contract.
+   Any mobile create/edit flow that requires confirmation must keep its action
+   footer visible above the bottom navigation while only the form body scrolls. */
+
+@media (max-width: 820px) {
+  /* Generic confirmation sheets. New transaction and Settings are dedicated
+     mobile tab surfaces and keep their own layout rules. */
+  .dialog-backdrop:not(:has(.settings-body)):not(:has(.kind-toggle)):not(.move-money-modal-backdrop) {
+    inset: 0 0 var(--rubies-mobile-nav-height, 88px) 0 !important;
+    display: flex !important;
+    align-items: flex-end !important;
+    justify-content: center !important;
+    padding: max(8px, env(safe-area-inset-top, 0px)) 0 0 !important;
+    overflow: hidden !important;
+  }
+
+  .dialog-backdrop:not(:has(.settings-body)):not(:has(.kind-toggle)):not(.move-money-modal-backdrop) > .dialog-card {
+    inline-size: 100% !important;
+    max-inline-size: 100% !important;
+    max-block-size: 100% !important;
+    margin: 0 !important;
+    border-radius: 18px 18px 0 0 !important;
+  }
+
+  /* The content viewport itself does not scroll. A form inside it owns the
+     scroll so its action row can be pinned independently. */
+  .dialog-card .dialog-content:has(> form > .dialog-actions) {
+    position: relative !important;
+    min-block-size: 0 !important;
+    overflow: hidden !important;
+    padding: 0 !important;
+  }
+
+  .dialog-card .dialog-content:has(> form > .dialog-actions) > form {
+    block-size: 100% !important;
+    min-block-size: 0 !important;
+    max-block-size: 100% !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding: 16px 16px 92px !important;
+    scroll-padding-bottom: 100px;
+  }
+
+  /* This is deliberately absolute rather than sticky. Sticky only starts
+     sticking once its natural position enters the scrollport, which is exactly
+     why Save could be completely unreachable on tall forms. */
+  .dialog-card .dialog-content:has(> form > .dialog-actions) > form > .dialog-actions {
+    position: absolute !important;
+    z-index: 12 !important;
+    inset: auto 0 0 !important;
+    min-block-size: 72px !important;
+    margin: 0 !important;
+    padding: 11px 16px 12px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: 9px !important;
+    border-top: 1px solid var(--border) !important;
+    background: rgba(26, 24, 30, .99) !important;
+    box-shadow: 0 -10px 28px rgba(0, 0, 0, .32) !important;
+  }
+
+  .dialog-card .dialog-content:has(> form > .dialog-actions) > form > .dialog-actions.split-actions {
+    justify-content: space-between !important;
+  }
+
+  .dialog-card .dialog-content:has(> form > .dialog-actions) > form > .dialog-actions > div {
+    min-inline-size: 0;
+    display: flex !important;
+    gap: 8px !important;
+  }
+
+  .dialog-card .dialog-content:has(> form > .dialog-actions) > form > .dialog-actions .primary-button,
+  .dialog-card .dialog-content:has(> form > .dialog-actions) > form > .dialog-actions .secondary-button,
+  .dialog-card .dialog-content:has(> form > .dialog-actions) > form > .dialog-actions .danger-button {
+    min-block-size: 46px !important;
+  }
+
+  /* Short, single-action creation dialogs should still present a proper full
+     width confirmation target on phones. */
+  .dialog-card .dialog-content:has(> form > .dialog-actions) > form > .dialog-actions > .primary-button:only-child {
+    inline-size: 100% !important;
+  }
+
+  /* Move Money keeps its centered modal presentation, but uses the same
+     always-visible footer contract. */
+  .move-money-modal-card .dialog-content:has(> form > .dialog-actions) {
+    position: relative !important;
+    min-block-size: 0 !important;
+    overflow: hidden !important;
+    padding: 0 !important;
+  }
+
+  .move-money-modal-card .dialog-content:has(> form > .dialog-actions) > form {
+    block-size: 100% !important;
+    min-block-size: 0 !important;
+    overflow-y: auto !important;
+    padding: 16px 16px 92px !important;
+    scroll-padding-bottom: 100px;
+  }
+
+  .move-money-modal-card .dialog-content:has(> form > .dialog-actions) > form > .dialog-actions {
+    position: absolute !important;
+    z-index: 12 !important;
+    inset: auto 0 0 !important;
+    min-block-size: 72px !important;
+    margin: 0 !important;
+    padding: 11px 16px 12px !important;
+    border-top: 1px solid var(--border) !important;
+    background: rgba(26, 24, 30, .99) !important;
+  }
+}
