@@ -1,0 +1,95 @@
+/* Mobile screen ownership fixes for 2026.8.11.1.
+   Keep this layer small: it corrects screen scrolling/stacking and a few controls
+   without adding DOM observers or viewport-width hacks. */
+
+@media (max-width: 820px) {
+  /* New and Settings must own the viewport while active. Hiding the old view
+     with visibility left it in document flow, so its scrollbar could still be
+     moved behind the active screen. Remove it from the scroll layout and lock
+     the document; only the active screen's .dialog-content scrolls. */
+  html:has(.dialog-backdrop .settings-body),
+  html:has(.dialog-backdrop .kind-toggle),
+  body:has(.dialog-backdrop .settings-body),
+  body:has(.dialog-backdrop .kind-toggle) {
+    block-size: 100dvh !important;
+    min-block-size: 100dvh !important;
+    overflow: hidden !important;
+    overscroll-behavior: none !important;
+  }
+
+  body:has(.dialog-backdrop .settings-body) #root,
+  body:has(.dialog-backdrop .kind-toggle) #root,
+  body:has(.dialog-backdrop .settings-body) .app-shell,
+  body:has(.dialog-backdrop .kind-toggle) .app-shell {
+    block-size: 100dvh !important;
+    min-block-size: 0 !important;
+    overflow: hidden !important;
+  }
+
+  body:has(.dialog-backdrop .settings-body) .main-content,
+  body:has(.dialog-backdrop .kind-toggle) .main-content {
+    position: fixed !important;
+    inset: 0 !important;
+    block-size: 0 !important;
+    min-block-size: 0 !important;
+    overflow: hidden !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+
+  .dialog-backdrop:has(.settings-body),
+  .dialog-backdrop:has(.kind-toggle) {
+    overscroll-behavior: none !important;
+  }
+
+  .dialog-card:has(.settings-body) .dialog-content,
+  .dialog-card:has(.kind-toggle) .dialog-content {
+    block-size: 100% !important;
+    min-block-size: 0 !important;
+    overflow-y: auto !important;
+    overscroll-behavior-y: contain !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* The sticky RTA should read as one floating control, not a card sitting on
+     top of a second opaque rectangle. */
+  .month-summary-grid {
+    background: transparent !important;
+    border-bottom: 0 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    pointer-events: none;
+  }
+
+  .month-summary-grid .rta-card {
+    pointer-events: auto;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, .28) !important;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+
+  /* details/summary has browser-specific layout behavior; position the trigger
+     geometrically so it is centered across both rows of the category. */
+  .mobile-row-menu {
+    grid-row: 1 / -1 !important;
+    align-self: stretch !important;
+    justify-self: stretch !important;
+    block-size: 100% !important;
+    min-block-size: 100% !important;
+    position: relative !important;
+    display: block !important;
+  }
+
+  .mobile-row-menu > summary {
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    margin: 0 !important;
+    transform: translate(-50%, -50%) !important;
+  }
+
+  .mobile-row-menu-panel {
+    top: calc(50% + 22px) !important;
+    right: 0 !important;
+  }
+}
