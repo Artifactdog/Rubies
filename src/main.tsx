@@ -5,6 +5,7 @@ import './styles.css'
 import './mobile-polish.css'
 import './ui-stability.css'
 import './mobile-layout-fixes.css'
+import './mobile-native.css'
 import { installUiRuntime } from './uiRuntime'
 
 createRoot(document.getElementById('root')!).render(
