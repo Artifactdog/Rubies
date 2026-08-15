@@ -9,7 +9,6 @@ import './mobile-native.css'
 import './mobile-screen-fixes.css'
 import './mobile-dialog-contract.css'
 import './mobile-consistency.css'
-import './mobile-transaction-month-fix.css'
 import { installUiRuntime } from './uiRuntime'
 import { installMobileViewport } from './mobileViewport'
 
