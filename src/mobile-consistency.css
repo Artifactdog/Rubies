@@ -1,0 +1,327 @@
+/* Final mobile consistency layer.
+   Keep this file boring: normal CSS plus visual-viewport variables supplied by
+   mobileViewport.ts. No DOM observers or polling. */
+
+@media (max-width: 820px) {
+  :root {
+    --rubies-visual-height: 100dvh;
+    --rubies-visual-top: 0px;
+    --rubies-active-nav-height: var(--rubies-mobile-nav-height, 88px);
+  }
+
+  /* These labels add no navigation value on a phone and iOS can make the tiny
+     tracked text look fuzzy around the status-bar region. */
+  .plan-header .eyebrow,
+  .accounts-header .eyebrow {
+    display: none !important;
+  }
+
+  /* Keep the month geometrically centered. Previous stays left; next + Today
+     stay right without participating in the title's centering calculation. */
+  .plan-header .month-navigation {
+    position: relative !important;
+    display: flex !important;
+    align-items: center !important;
+    inline-size: 100% !important;
+    min-block-size: 44px !important;
+    gap: 7px !important;
+  }
+
+  .plan-header .month-navigation h1 {
+    position: absolute !important;
+    z-index: 1;
+    inset-inline-start: 50% !important;
+    inline-size: min(52vw, 230px) !important;
+    max-inline-size: min(52vw, 230px) !important;
+    margin: 0 !important;
+    transform: translateX(-50%) !important;
+    text-align: center !important;
+    pointer-events: none;
+  }
+
+  .plan-header .month-navigation > .icon-button:nth-of-type(2) {
+    margin-inline-start: auto !important;
+  }
+
+  .plan-header .month-navigation .icon-button,
+  .plan-header .today-button {
+    position: relative;
+    z-index: 2;
+    flex: 0 0 42px !important;
+    inline-size: 42px !important;
+    min-inline-size: 42px !important;
+    block-size: 42px !important;
+    min-block-size: 42px !important;
+  }
+
+  /* Category target scheduling should read like a phone form, not a compressed
+     desktop three-column grid. */
+  .target-schedule-box,
+  .target-schedule-box > *,
+  .target-inline-grid,
+  .target-inline-grid > label,
+  .target-inline-grid input,
+  .target-inline-grid select {
+    min-inline-size: 0 !important;
+    max-inline-size: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .target-schedule-box {
+    padding: 14px !important;
+    border-radius: 14px !important;
+  }
+
+  .target-inline-grid:not(.repeat-grid) {
+    display: grid !important;
+    grid-template-columns: minmax(0, .58fr) minmax(0, 1fr) !important;
+    gap: 11px !important;
+  }
+
+  .target-inline-grid:not(.repeat-grid) > label:nth-child(3) {
+    grid-column: 1 / -1 !important;
+  }
+
+  .target-inline-grid input[type="date"],
+  .form-grid input[type="date"] {
+    display: block !important;
+    inline-size: 100% !important;
+    width: 100% !important;
+    min-inline-size: 0 !important;
+    min-width: 0 !important;
+    max-inline-size: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    -webkit-appearance: none !important;
+    appearance: none !important;
+  }
+
+  .target-inline-grid input[type="date"]::-webkit-date-and-time-value,
+  .form-grid input[type="date"]::-webkit-date-and-time-value {
+    inline-size: 100% !important;
+    min-inline-size: 0 !important;
+    text-align: left !important;
+  }
+
+  /* One footer language across confirmation dialogs: destructive action on the
+     far left when present; Cancel + primary confirmation grouped on the right. */
+  .dialog-card .dialog-actions {
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: 10px !important;
+  }
+
+  .dialog-card .dialog-actions.split-actions {
+    display: grid !important;
+    grid-template-columns: auto minmax(0, 1fr) !important;
+    align-items: center !important;
+    gap: 10px !important;
+  }
+
+  .dialog-card .dialog-actions.split-actions > .danger-button,
+  .dialog-card .dialog-actions.split-actions > span {
+    justify-self: start !important;
+  }
+
+  .dialog-card .dialog-actions.split-actions > div {
+    justify-self: end !important;
+    min-inline-size: 0 !important;
+    display: flex !important;
+    justify-content: flex-end !important;
+    gap: 10px !important;
+  }
+
+  /* Expense/income state must be visually identical on New and Edit screens. */
+  .kind-toggle > button:first-child.active {
+    border-color: rgba(237, 126, 144, .74) !important;
+    color: #ffc2cb !important;
+    background: rgba(142, 43, 61, .45) !important;
+  }
+
+  .kind-toggle > button:last-child.active {
+    border-color: rgba(114, 215, 163, .72) !important;
+    color: #a8efc8 !important;
+    background: rgba(44, 112, 78, .42) !important;
+  }
+
+  /* Edit transaction is entered from Accounts, so unlike New it needs an
+     explicit way to return to the previous screen. */
+  .dialog-card[aria-label="Edit transaction"] .dialog-header .icon-button {
+    display: grid !important;
+  }
+
+  /* Full-screen transaction forms have exactly three vertical regions:
+     kind toggle, scrollable fields, and an action footer. This prevents the
+     amount card from being clipped by the footer and survives keyboard resize. */
+  .dialog-backdrop:has(.kind-toggle),
+  .settings-screen-backdrop,
+  .transaction-screen-backdrop,
+  .transaction-mobile-backdrop {
+    top: var(--rubies-visual-top) !important;
+    right: 0 !important;
+    bottom: auto !important;
+    left: 0 !important;
+    block-size: calc(var(--rubies-visual-height) - var(--rubies-active-nav-height)) !important;
+    max-block-size: calc(var(--rubies-visual-height) - var(--rubies-active-nav-height)) !important;
+  }
+
+  .dialog-card:has(.kind-toggle) {
+    block-size: 100% !important;
+    min-block-size: 0 !important;
+    max-block-size: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  .dialog-card:has(.kind-toggle) .dialog-header {
+    flex: 0 0 auto !important;
+  }
+
+  .dialog-card:has(.kind-toggle) .dialog-content {
+    flex: 1 1 auto !important;
+    block-size: auto !important;
+    min-block-size: 0 !important;
+    padding: 14px !important;
+    overflow: hidden !important;
+  }
+
+  .dialog-card:has(.kind-toggle) .dialog-content > form {
+    block-size: 100% !important;
+    min-block-size: 0 !important;
+    display: grid !important;
+    grid-template-rows: auto minmax(0, 1fr) auto !important;
+    gap: 12px !important;
+  }
+
+  .dialog-card:has(.kind-toggle) .kind-toggle {
+    margin: 0 !important;
+  }
+
+  .dialog-card:has(.kind-toggle) .form-grid {
+    min-block-size: 0 !important;
+    max-block-size: 100% !important;
+    align-content: start !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior-y: contain !important;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    padding: 0 2px 24px !important;
+  }
+
+  .dialog-card:has(.kind-toggle) .transaction-amount-editor {
+    min-inline-size: 0 !important;
+    max-inline-size: 100% !important;
+    overflow: visible !important;
+    margin-block-end: 2px !important;
+  }
+
+  .dialog-card:has(.kind-toggle) .dialog-actions {
+    position: static !important;
+    inset: auto !important;
+    inline-size: calc(100% + 28px) !important;
+    max-inline-size: none !important;
+    min-block-size: 72px !important;
+    margin: 0 -14px -14px !important;
+    padding: 11px 14px 12px !important;
+    border-top: 1px solid var(--border) !important;
+    background: rgba(26, 24, 30, .99) !important;
+    box-shadow: 0 -8px 22px rgba(0, 0, 0, .26) !important;
+  }
+
+  .dialog-card[aria-label="New transaction"] .dialog-actions.split-actions {
+    display: block !important;
+  }
+
+  .dialog-card[aria-label="New transaction"] .dialog-actions.split-actions > span,
+  .dialog-card[aria-label="New transaction"] .dialog-actions .secondary-button {
+    display: none !important;
+  }
+
+  .dialog-card[aria-label="New transaction"] .dialog-actions > div,
+  .dialog-card[aria-label="New transaction"] .dialog-actions .primary-button {
+    inline-size: 100% !important;
+    max-inline-size: none !important;
+  }
+
+  .dialog-card[aria-label="Edit transaction"] .dialog-actions.split-actions {
+    grid-template-columns: auto minmax(0, 1fr) !important;
+  }
+
+  .dialog-card[aria-label="Edit transaction"] .dialog-actions .secondary-button {
+    display: none !important;
+  }
+
+  .dialog-card[aria-label="Edit transaction"] .dialog-actions > div {
+    inline-size: auto !important;
+  }
+
+  .dialog-card[aria-label="Edit transaction"] .dialog-actions .primary-button {
+    inline-size: auto !important;
+    min-inline-size: min(48vw, 210px) !important;
+  }
+
+  /* Generic sheets and Move Money also track the actual visible iOS viewport.
+     When the keyboard is open the bottom navigation is intentionally ignored. */
+  .dialog-backdrop:not(:has(.settings-body)):not(:has(.kind-toggle)) {
+    top: var(--rubies-visual-top) !important;
+    bottom: auto !important;
+    block-size: calc(var(--rubies-visual-height) - var(--rubies-active-nav-height)) !important;
+    max-block-size: calc(var(--rubies-visual-height) - var(--rubies-active-nav-height)) !important;
+  }
+
+  .move-money-modal-backdrop {
+    align-items: center !important;
+    padding: 10px !important;
+  }
+
+  .move-money-modal-card {
+    max-block-size: calc(100% - 12px) !important;
+  }
+
+  html.rubies-keyboard-open .mobile-nav {
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+
+  html.rubies-keyboard-open,
+  html.rubies-keyboard-open body,
+  html.rubies-keyboard-open body #root,
+  html.rubies-keyboard-open body .app-shell {
+    block-size: var(--rubies-visual-height) !important;
+    min-block-size: 0 !important;
+    overflow: hidden !important;
+  }
+
+  /* Undo feedback belongs above the app navigation, never underneath it. */
+  .action-toast {
+    z-index: 190 !important;
+    right: max(12px, env(safe-area-inset-right, 0px)) !important;
+    bottom: calc(var(--rubies-active-nav-height) + 12px) !important;
+    left: max(12px, env(safe-area-inset-left, 0px)) !important;
+    inline-size: auto !important;
+    max-inline-size: none !important;
+  }
+
+  html.rubies-keyboard-open .action-toast {
+    display: none !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .target-inline-grid:not(.repeat-grid),
+  .repeat-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .target-inline-grid:not(.repeat-grid) > label:nth-child(3) {
+    grid-column: auto !important;
+  }
+
+  .plan-header .month-navigation h1 {
+    inline-size: min(50vw, 200px) !important;
+    max-inline-size: min(50vw, 200px) !important;
+    font-size: 25px !important;
+  }
+}
