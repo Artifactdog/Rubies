@@ -21,19 +21,23 @@ test('mobile category schedule constrains the due date and avoids the desktop th
   assert.match(css, /\.target-inline-grid input\[type="date"\][\s\S]*max-inline-size:\s*100%/)
 })
 
-test('mobile month title is centered independently from Today and eyebrow labels are removed', () => {
+test('mobile month switcher stays symmetric and keeps Today out of the title row', () => {
   assert.match(css, /\.plan-header \.eyebrow,[\s\S]*\.accounts-header \.eyebrow[\s\S]*display:\s*none/)
-  assert.match(css, /\.month-navigation h1[\s\S]*inset-inline-start:\s*50%/)
-  assert.match(css, /transform:\s*translateX\(-50%\)/)
-  assert.match(css, /\.icon-button:nth-of-type\(2\)[\s\S]*margin-inline-start:\s*auto/)
+  assert.match(css, /\.plan-header \.month-navigation[\s\S]*grid-template-columns:\s*44px minmax\(0, 1fr\) 44px/)
+  assert.match(css, /grid-template-areas:[\s\S]*"previous month next"[\s\S]*"\. today \."/)
+  assert.match(css, /\.month-navigation > h1[\s\S]*position:\s*static[\s\S]*text-align:\s*center/)
+  assert.match(css, /\.today-button:disabled[\s\S]*display:\s*none/)
+  assert.doesNotMatch(css, /inset-inline-start:\s*50%/)
+  assert.doesNotMatch(css, /translateX\(-50%\)/)
 })
 
-test('new and edit transaction screens share color, sizing, and predictable actions', () => {
-  assert.match(css, /\.kind-toggle > button:first-child\.active[\s\S]*--red|\.kind-toggle > button:first-child\.active[\s\S]*237, 126, 144/)
+test('new and edit transaction screens share color and one predictable scrolling contract', () => {
+  assert.match(css, /\.kind-toggle > button:first-child\.active[\s\S]*237, 126, 144/)
   assert.match(css, /\.kind-toggle > button:last-child\.active[\s\S]*114, 215, 163/)
   assert.match(css, /aria-label="Edit transaction"[\s\S]*\.dialog-header \.icon-button[\s\S]*display:\s*grid/)
-  assert.match(css, /grid-template-rows:\s*auto minmax\(0, 1fr\) auto/)
-  assert.match(css, /\.form-grid[\s\S]*overflow-y:\s*auto/)
+  assert.match(css, /\.dialog-content > form[\s\S]*display:\s*flex[\s\S]*overflow:\s*hidden/)
+  assert.match(css, /\.dialog-card:has\(\.kind-toggle\) \.form-grid[\s\S]*overflow-y:\s*auto/)
+  assert.match(css, /\.dialog-card:has\(\.kind-toggle\) \.dialog-actions[\s\S]*position:\s*static/)
 })
 
 test('mobile dialogs follow visual viewport and undo feedback stays above navigation', () => {
