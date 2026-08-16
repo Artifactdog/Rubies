@@ -9,8 +9,10 @@ import './mobile-native.css'
 import './mobile-screen-fixes.css'
 import './mobile-dialog-contract.css'
 import './mobile-consistency.css'
+import './motion.css'
 import { installUiRuntime } from './uiRuntime'
 import { installMobileViewport } from './mobileViewport'
+import { installMotionRuntime } from './motionRuntime'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -18,6 +20,7 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 )
 
+installMotionRuntime()
 installUiRuntime()
 installMobileViewport()
 
