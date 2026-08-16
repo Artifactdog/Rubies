@@ -140,6 +140,44 @@ const activeDialogNavIndex = (card: HTMLElement) => {
   return -1
 }
 
+const handleGroupToggle = (event: MouseEvent) => {
+  const target = event.target as Element | null
+  const button = target?.closest<HTMLButtonElement>('.group-name')
+  if (!button) return false
+
+  if (button.dataset.rubiesMotionGroupBypass === 'true') {
+    delete button.dataset.rubiesMotionGroupBypass
+    return false
+  }
+
+  const group = button.closest<HTMLElement>('.category-group')
+  const body = group?.querySelector<HTMLElement>('.group-categories')
+  if (!group) return false
+
+  if (!body) {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const expandedBody = group.querySelector<HTMLElement>('.group-categories')
+        if (!expandedBody) return
+        expandedBody.classList.add('rubies-group-expanding')
+        expandedBody.addEventListener('animationend', () => expandedBody.classList.remove('rubies-group-expanding'), { once: true })
+      })
+    })
+    return false
+  }
+
+  if (reducedMotionMedia.matches) return false
+
+  event.preventDefault()
+  event.stopImmediatePropagation()
+  body.classList.add('rubies-group-collapsing')
+  window.setTimeout(() => {
+    button.dataset.rubiesMotionGroupBypass = 'true'
+    button.click()
+  }, 150)
+  return true
+}
+
 const handleMobileNavigation = (event: MouseEvent) => {
   if (!mobileMotionMedia.matches) return false
   const target = event.target as Element | null
@@ -279,6 +317,7 @@ export const installMotionRuntime = () => {
   document.addEventListener('pointercancel', handleSheetPointerCancel, true)
   document.addEventListener('click', (event) => {
     if (handleCloseClick(event)) return
+    if (handleGroupToggle(event)) return
     handleMobileNavigation(event)
   }, true)
 }
