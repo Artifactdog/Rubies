@@ -1,61 +1,82 @@
-/* Rubies motion language: fast, physical, and quiet enough for a finance app. */
+/* Rubies motion language.
+   Modal motion is intentionally obvious and physical: surfaces travel, settle,
+   and leave the screen instead of fading in place or waiting on hidden timers. */
 :root {
-  --motion-fast: 120ms;
-  --motion-ui: 180ms;
-  --motion-sheet: 230ms;
-  --motion-slow: 320ms;
+  --motion-fast: 150ms;
+  --motion-ui: 240ms;
+  --motion-popover: 300ms;
+  --motion-dialog: 440ms;
+  --motion-sheet: 540ms;
+  --motion-sheet-exit: 410ms;
   --ease-standard: cubic-bezier(.2, .8, .2, 1);
-  --ease-emphasized: cubic-bezier(.16, 1, .3, 1);
-  --ease-exit: cubic-bezier(.4, 0, 1, 1);
+  --ease-spring: cubic-bezier(.16, 1, .3, 1);
+  --ease-sheet: cubic-bezier(.32, .72, 0, 1);
+  --ease-exit: cubic-bezier(.32, 0, .67, 0);
 }
 
 @keyframes rubies-backdrop-in {
-  from { opacity: 0; }
+  from { opacity: 0; backdrop-filter: blur(0); }
   to { opacity: 1; }
 }
 
 @keyframes rubies-dialog-in {
-  from { opacity: 0; transform: translate3d(0, 12px, 0) scale(.975); }
-  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 28px, 0) scale(.93);
+  }
+  72% {
+    opacity: 1;
+    transform: translate3d(0, -2px, 0) scale(1.008);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
 }
 
 @keyframes rubies-sheet-in {
-  from { opacity: .7; transform: translate3d(0, 18%, 0) scale(.995); }
-  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
-}
-
-@keyframes rubies-screen-in {
-  from { opacity: .6; transform: translate3d(0, 22px, 0) scale(.995); }
-  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  0% {
+    opacity: .82;
+    transform: translate3d(0, 102%, 0) scale(.992);
+  }
+  76% {
+    opacity: 1;
+    transform: translate3d(0, -7px, 0) scale(1);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
 }
 
 @keyframes rubies-menu-in {
-  from { opacity: 0; transform: translate3d(0, -5px, 0) scale(.96); }
+  from { opacity: 0; transform: translate3d(0, -8px, 0) scale(.94); }
   to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
 }
 
 @keyframes rubies-toast-in {
-  from { opacity: 0; transform: translate3d(0, 12px, 0) scale(.97); }
-  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  0% { opacity: 0; transform: translate3d(0, 20px, 0) scale(.94); }
+  75% { opacity: 1; transform: translate3d(0, -2px, 0) scale(1.01); }
+  100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
 }
 
 @keyframes rubies-content-in {
-  from { opacity: 0; transform: translate3d(0, 6px, 0); }
+  from { opacity: 0; transform: translate3d(0, 8px, 0); }
   to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 
 @keyframes rubies-group-expand {
-  from { opacity: 0; transform: translate3d(0, -6px, 0) scaleY(.985); }
+  from { opacity: 0; transform: translate3d(0, -8px, 0) scaleY(.98); }
   to { opacity: 1; transform: translate3d(0, 0, 0) scaleY(1); }
 }
 
 @keyframes rubies-group-collapse {
   from { opacity: 1; transform: translate3d(0, 0, 0) scaleY(1); }
-  to { opacity: 0; transform: translate3d(0, -6px, 0) scaleY(.985); }
+  to { opacity: 0; transform: translate3d(0, -8px, 0) scaleY(.98); }
 }
 
-/* Interaction motion. Page/tab content deliberately does not transition when
-   switching between Plan and Accounts; only the selected navigation control does. */
+/* Plan and Accounts are primary tabs, so their page content intentionally does
+   not animate between each other. The navigation selection itself does. */
 button,
 input,
 select,
@@ -80,7 +101,7 @@ button {
 }
 
 button:not(:disabled):active {
-  transform: scale(.975);
+  transform: scale(.97);
   transition-duration: var(--motion-fast);
 }
 
@@ -88,7 +109,7 @@ button:not(:disabled):active {
 .mini-action:not(:disabled):active,
 .nudge-button:not(:disabled):active,
 .tiny-add:not(:disabled):active {
-  transform: scale(.91);
+  transform: scale(.89);
 }
 
 input,
@@ -112,12 +133,12 @@ textarea:focus {
 .rubies-slider-fill,
 .rubies-slider-thumb,
 .group-chevron {
-  transition: transform var(--motion-ui) var(--ease-emphasized), opacity var(--motion-ui) var(--ease-standard), color var(--motion-ui) var(--ease-standard);
+  transition: transform var(--motion-ui) var(--ease-spring), opacity var(--motion-ui) var(--ease-standard), color var(--motion-ui) var(--ease-standard);
 }
 
 .main-nav button.active svg,
 .mobile-nav button.active svg {
-  transform: translate3d(0, -1px, 0) scale(1.06);
+  transform: translate3d(0, -2px, 0) scale(1.08);
 }
 
 .mobile-nav button.active span {
@@ -126,7 +147,7 @@ textarea:focus {
 
 .category-name:hover::after,
 .category-name:focus-visible::after {
-  transform: translate3d(2px, 0, 0);
+  transform: translate3d(3px, 0, 0);
 }
 
 .summary-card,
@@ -139,7 +160,7 @@ textarea:focus {
 @media (hover: hover) and (pointer: fine) {
   .summary-card:hover,
   .account-card:hover {
-    transform: translate3d(0, -2px, 0);
+    transform: translate3d(0, -3px, 0);
   }
 
   .category-group:hover,
@@ -152,7 +173,7 @@ textarea:focus {
 .form-error,
 .form-success,
 .import-source-note {
-  animation: rubies-content-in var(--motion-ui) var(--ease-emphasized) both;
+  animation: rubies-content-in var(--motion-popover) var(--ease-spring) both;
 }
 
 .mobile-row-menu[open] .mobile-row-menu-panel,
@@ -161,48 +182,39 @@ textarea:focus {
 }
 
 .mobile-row-menu[open] .mobile-row-menu-panel {
-  animation: rubies-menu-in var(--motion-ui) var(--ease-emphasized) both;
+  animation: rubies-menu-in var(--motion-popover) var(--ease-spring) both;
 }
 
 .action-toast {
-  animation: rubies-toast-in var(--motion-sheet) var(--ease-emphasized) both;
-  transition: opacity var(--motion-ui) var(--ease-standard), transform var(--motion-sheet) var(--ease-emphasized);
+  animation: rubies-toast-in 420ms var(--ease-spring) both;
+  transition: opacity var(--motion-ui) var(--ease-standard), transform 420ms var(--ease-spring);
 }
 
-/* Dialog entry/exit is shared by desktop and mobile. Runtime-delayed unmounts
-   let the exit motion finish instead of letting React make the surface vanish. */
+/* Desktop dialogs use a visible scale/translate spring. Exit is driven by the
+   Web Animations API so the state change occurs exactly when motion finishes. */
 .dialog-backdrop {
-  animation: rubies-backdrop-in var(--motion-ui) var(--ease-standard) both;
-  transition: opacity var(--motion-ui) var(--ease-exit), backdrop-filter var(--motion-ui) var(--ease-standard);
+  animation: rubies-backdrop-in 320ms var(--ease-standard) both;
+  will-change: opacity, backdrop-filter;
 }
 
 .dialog-card {
-  animation: rubies-dialog-in var(--motion-sheet) var(--ease-emphasized) both;
+  animation: rubies-dialog-in var(--motion-dialog) var(--ease-spring) both;
   transform-origin: center center;
-  transition: transform var(--motion-sheet) var(--ease-emphasized), opacity var(--motion-ui) var(--ease-exit), box-shadow var(--motion-ui) var(--ease-standard);
   will-change: transform, opacity;
 }
 
 .dialog-backdrop.rubies-motion-dismissing {
-  opacity: 0;
   pointer-events: none !important;
-}
-
-.dialog-backdrop.rubies-motion-dismissing > .dialog-card {
-  animation: none !important;
-  opacity: 0;
-  transform: translate3d(0, 12px, 0) scale(.975);
-  transition-timing-function: var(--ease-exit);
 }
 
 .group-categories.rubies-group-expanding {
   transform-origin: top center;
-  animation: rubies-group-expand var(--motion-ui) var(--ease-emphasized) both;
+  animation: rubies-group-expand 300ms var(--ease-spring) both;
 }
 
 .group-categories.rubies-group-collapsing {
   transform-origin: top center;
-  animation: rubies-group-collapse 150ms var(--ease-exit) both;
+  animation: rubies-group-collapse 220ms var(--ease-exit) both;
   pointer-events: none;
 }
 
@@ -217,74 +229,65 @@ textarea:focus {
 }
 
 .kind-toggle button.active {
-  transform: scale(1.015);
+  transform: scale(1.02);
 }
 
 @media (max-width: 820px) {
-  /* Generic confirmation dialogs are bottom sheets on phones. */
-  .dialog-backdrop:not(:has(.settings-body)):not(:has(.kind-toggle)):not(:has(.move-flow)) > .dialog-card {
+  /* Every modal surface enters from below on mobile, including New, Settings,
+     Move Money and the smaller edit/confirmation sheets. */
+  .dialog-backdrop > .dialog-card {
     --rubies-sheet-drag: 0px;
-    animation-name: rubies-sheet-in;
-    animation-duration: var(--motion-sheet);
+    animation: rubies-sheet-in var(--motion-sheet) var(--ease-sheet) both !important;
     transform-origin: center bottom;
   }
 
-  .dialog-backdrop:not(:has(.settings-body)):not(:has(.kind-toggle)):not(:has(.move-flow)) > .dialog-card > .dialog-header {
+  .dialog-card > .dialog-header {
     position: relative;
-    padding-top: 27px !important;
+    padding-top: 29px !important;
     touch-action: none;
     user-select: none;
   }
 
-  .dialog-backdrop:not(:has(.settings-body)):not(:has(.kind-toggle)):not(:has(.move-flow)) > .dialog-card > .dialog-header::before {
+  .dialog-card > .dialog-header::before {
     content: "";
     position: absolute;
-    top: 9px;
+    top: 10px;
     left: 50%;
-    inline-size: 38px;
-    block-size: 4px;
+    inline-size: 42px;
+    block-size: 5px;
     border-radius: 999px;
     background: var(--border-bright);
-    opacity: .9;
+    opacity: .92;
     transform: translateX(-50%);
   }
 
-  .dialog-backdrop:not(:has(.settings-body)):not(:has(.kind-toggle)):not(:has(.move-flow)) > .dialog-card.rubies-sheet-dragging {
+  .dialog-card.rubies-sheet-dragging {
     animation: none !important;
     transform: translate3d(0, var(--rubies-sheet-drag), 0) !important;
     transition: none !important;
   }
 
-  .dialog-backdrop:not(:has(.settings-body)):not(:has(.kind-toggle)):not(:has(.move-flow)) > .dialog-card.rubies-sheet-rebounding {
+  .dialog-card.rubies-sheet-rebounding {
     animation: none !important;
     transform: translate3d(0, var(--rubies-sheet-drag), 0) !important;
-    transition: transform 250ms var(--ease-emphasized) !important;
+    transition: transform 430ms var(--ease-sheet) !important;
   }
 
-  .dialog-backdrop.rubies-motion-dismissing:not(:has(.settings-body)):not(:has(.kind-toggle)):not(:has(.move-flow)) > .dialog-card {
-    transform: translate3d(0, 105%, 0) scale(1) !important;
-    transition: transform var(--motion-sheet) var(--ease-exit), opacity var(--motion-ui) var(--ease-exit) !important;
+  /* Move Money is a real bottom sheet on phones instead of a centered desktop
+     modal. This also makes its gesture and visual language match every dialog. */
+  .move-money-modal-backdrop {
+    align-items: flex-end !important;
+    justify-content: center !important;
+    padding: max(8px, env(safe-area-inset-top, 0px)) 0 0 !important;
   }
 
-  /* New transaction and Settings behave like app surfaces, not floating modals. */
-  .dialog-backdrop:has(.settings-body) > .dialog-card,
-  .dialog-backdrop:has(.kind-toggle) > .dialog-card,
-  .settings-screen-card,
-  .transaction-screen-card {
-    animation: rubies-screen-in var(--motion-sheet) var(--ease-emphasized) both;
-    transform-origin: center bottom;
-  }
-
-  .dialog-backdrop.rubies-motion-dismissing:has(.settings-body) > .dialog-card,
-  .dialog-backdrop.rubies-motion-dismissing:has(.kind-toggle) > .dialog-card,
-  .dialog-backdrop.rubies-motion-dismissing > .settings-screen-card,
-  .dialog-backdrop.rubies-motion-dismissing > .transaction-screen-card {
-    transform: translate3d(0, 24px, 0) scale(.995) !important;
-  }
-
-  .dialog-backdrop:has(.move-flow) > .dialog-card,
   .move-money-modal-card {
-    animation: rubies-dialog-in var(--motion-sheet) var(--ease-emphasized) both;
+    inline-size: 100% !important;
+    max-inline-size: 100% !important;
+    block-size: auto !important;
+    max-block-size: min(86dvh, 760px) !important;
+    margin: 0 !important;
+    border-radius: 22px 22px 0 0 !important;
   }
 
   .mobile-nav button {
@@ -292,13 +295,13 @@ textarea:focus {
   }
 
   .mobile-nav button:not(:disabled):active {
-    transform: scale(.94);
+    transform: scale(.92);
   }
 
   .mobile-row-menu-panel button:not(:disabled):active,
   .category-row .mini-action:not(:disabled):active,
   .transaction-table .mini-action:not(:disabled):active {
-    transform: scale(.92);
+    transform: scale(.9);
   }
 }
 
@@ -306,8 +309,10 @@ textarea:focus {
   :root {
     --motion-fast: 1ms;
     --motion-ui: 1ms;
+    --motion-popover: 1ms;
+    --motion-dialog: 1ms;
     --motion-sheet: 1ms;
-    --motion-slow: 1ms;
+    --motion-sheet-exit: 1ms;
   }
 
   *,
@@ -320,7 +325,6 @@ textarea:focus {
   }
 
   .dialog-card,
-  .dialog-backdrop.rubies-motion-dismissing > .dialog-card,
   button:not(:disabled):active,
   .kind-toggle button.active,
   .summary-card:hover,
