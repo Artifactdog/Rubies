@@ -3,9 +3,6 @@ const reducedMotionMedia = window.matchMedia('(prefers-reduced-motion: reduce)')
 
 const closeSelector = '.dialog-header .icon-button, .dialog-actions .secondary-button'
 const closingQueues = new WeakMap<HTMLElement, Array<() => void>>()
-const closingTimers = new WeakMap<HTMLElement, number>()
-
-const motionDelay = () => reducedMotionMedia.matches ? 0 : mobileMotionMedia.matches ? 230 : 190
 
 const dialogBackdropFor = (element: Element | null) => element?.closest<HTMLElement>('.dialog-backdrop') ?? null
 
@@ -17,15 +14,65 @@ const clearDragState = (card: HTMLElement | null) => {
 }
 
 const resetDismissState = (backdrop: HTMLElement) => {
-  const timer = closingTimers.get(backdrop)
-  if (timer) window.clearTimeout(timer)
-  closingTimers.delete(backdrop)
   closingQueues.delete(backdrop)
   backdrop.classList.remove('rubies-motion-dismissing')
   delete backdrop.dataset.rubiesMotionClosing
   const card = dialogCardFor(backdrop)
   clearDragState(card)
   card?.style.removeProperty('--rubies-sheet-drag')
+}
+
+const finished = (animation: Animation) => animation.finished.catch(() => undefined)
+
+const playDismissAnimation = async (backdrop: HTMLElement) => {
+  if (reducedMotionMedia.matches) return
+  const card = dialogCardFor(backdrop)
+  if (!card) return
+
+  clearDragState(card)
+  card.style.removeProperty('--rubies-sheet-drag')
+  card.getAnimations().forEach((animation) => animation.cancel())
+  backdrop.getAnimations().forEach((animation) => animation.cancel())
+
+  const cardStyle = getComputedStyle(card)
+  const backdropStyle = getComputedStyle(backdrop)
+  const currentTransform = cardStyle.transform === 'none' ? 'translate3d(0, 0, 0) scale(1)' : cardStyle.transform
+  const currentOpacity = Number.parseFloat(cardStyle.opacity) || 1
+  const currentBackdropOpacity = Number.parseFloat(backdropStyle.opacity) || 1
+
+  const mobile = mobileMotionMedia.matches
+  const cardAnimation = card.animate(
+    mobile
+      ? [
+          { transform: currentTransform, opacity: currentOpacity, offset: 0 },
+          { transform: 'translate3d(0, 8%, 0) scale(.998)', opacity: 1, offset: .18 },
+          { transform: 'translate3d(0, 108%, 0) scale(.985)', opacity: .92, offset: 1 },
+        ]
+      : [
+          { transform: currentTransform, opacity: currentOpacity, offset: 0 },
+          { transform: 'translate3d(0, 3px, 0) scale(.995)', opacity: .98, offset: .18 },
+          { transform: 'translate3d(0, 30px, 0) scale(.925)', opacity: 0, offset: 1 },
+        ],
+    {
+      duration: mobile ? 410 : 320,
+      easing: mobile ? 'cubic-bezier(.32, 0, .67, 0)' : 'cubic-bezier(.4, 0, .2, 1)',
+      fill: 'forwards',
+    },
+  )
+
+  const backdropAnimation = backdrop.animate(
+    [
+      { opacity: currentBackdropOpacity },
+      { opacity: 0 },
+    ],
+    {
+      duration: mobile ? 360 : 280,
+      easing: 'cubic-bezier(.4, 0, 1, 1)',
+      fill: 'forwards',
+    },
+  )
+
+  await Promise.all([finished(cardAnimation), finished(backdropAnimation)])
 }
 
 const runAfterDismiss = (backdrop: HTMLElement, action: () => void) => {
@@ -38,18 +85,13 @@ const runAfterDismiss = (backdrop: HTMLElement, action: () => void) => {
   const queue = [action]
   closingQueues.set(backdrop, queue)
   backdrop.dataset.rubiesMotionClosing = 'true'
-
-  const card = dialogCardFor(backdrop)
-  clearDragState(card)
   backdrop.classList.add('rubies-motion-dismissing')
 
-  const timer = window.setTimeout(() => {
-    closingTimers.delete(backdrop)
+  void playDismissAnimation(backdrop).then(() => {
     const actions = closingQueues.get(backdrop) ?? []
     closingQueues.delete(backdrop)
     actions.forEach((queuedAction) => queuedAction())
-  }, motionDelay())
-  closingTimers.set(backdrop, timer)
+  })
 }
 
 const clickWithoutDismiss = (button: HTMLButtonElement) => {
@@ -103,7 +145,7 @@ const handleBackdropMouseDown = (event: MouseEvent) => {
 
 const handleDialogSubmit = (event: SubmitEvent) => {
   const form = event.target
-  if (!(form instanceof HTMLFormElement)) return
+  if (!(form instanceof HTMLFormElement) || !form.checkValidity()) return
   const backdrop = dialogBackdropFor(form)
   if (!backdrop) return
   const card = dialogCardFor(backdrop)
@@ -174,7 +216,7 @@ const handleGroupToggle = (event: MouseEvent) => {
   window.setTimeout(() => {
     button.dataset.rubiesMotionGroupBypass = 'true'
     button.click()
-  }, 150)
+  }, 220)
   return true
 }
 
@@ -229,9 +271,7 @@ let swipeState: SwipeState | null = null
 
 const isSwipeDismissibleSheet = (card: HTMLElement) => {
   if (!mobileMotionMedia.matches || reducedMotionMedia.matches) return false
-  if (card.matches('.mobile-tab-card, .settings-screen-card, .transaction-screen-card, .move-money-modal-card')) return false
-  if (card.querySelector('.settings-body, .kind-toggle, .move-flow')) return false
-  return true
+  return Boolean(card.querySelector('.dialog-header .icon-button'))
 }
 
 const handleSheetPointerDown = (event: PointerEvent) => {
@@ -280,7 +320,7 @@ const reboundSheet = (state: SwipeState) => {
     if (!document.contains(card)) return
     card.classList.remove('rubies-sheet-rebounding')
     card.style.removeProperty('--rubies-sheet-drag')
-  }, 260)
+  }, 440)
 }
 
 const finishSheetSwipe = (event: PointerEvent, cancelled = false) => {
@@ -291,9 +331,9 @@ const finishSheetSwipe = (event: PointerEvent, cancelled = false) => {
   if (state.header.hasPointerCapture(event.pointerId)) state.header.releasePointerCapture(event.pointerId)
   const elapsed = Math.max(1, performance.now() - state.startedAt)
   const velocity = state.distance / elapsed
-  const threshold = Math.min(150, Math.max(84, state.card.getBoundingClientRect().height * .13))
+  const threshold = Math.min(170, Math.max(92, state.card.getBoundingClientRect().height * .14))
 
-  if (!cancelled && (state.distance >= threshold || (state.distance >= 36 && velocity > .58))) {
+  if (!cancelled && (state.distance >= threshold || (state.distance >= 42 && velocity > .5))) {
     const closeButton = state.card.querySelector<HTMLButtonElement>('.dialog-header .icon-button')
     if (closeButton) {
       runAfterDismiss(state.backdrop, () => clickWithoutDismiss(closeButton))
