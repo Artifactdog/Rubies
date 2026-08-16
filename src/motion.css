@@ -284,7 +284,7 @@ textarea:focus {
   .move-money-modal-card {
     inline-size: 100% !important;
     max-inline-size: 100% !important;
-    block-size: auto !important;
+    block-size: min(86dvh, 760px) !important;
     max-block-size: min(86dvh, 760px) !important;
     margin: 0 !important;
     border-radius: 22px 22px 0 0 !important;
@@ -320,7 +320,7 @@ textarea:focus {
   *::after {
     scroll-behavior: auto !important;
     animation-duration: 1ms !important;
-    animation-iteration-count: 1 !important;
+    animation-iteration-count: 1ms !important;
     transition-duration: 1ms !important;
   }
 
