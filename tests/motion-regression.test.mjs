@@ -16,24 +16,43 @@ test('motion layer loads after layout styles and before the legacy UI runtime in
   assert.ok(uiInstall > motionInstall)
 })
 
-test('motion stylesheet gives dialogs distinct desktop, sheet, and full-screen transitions', async () => {
-  const css = await read('src/motion.css')
-  assert.match(css, /@keyframes rubies-dialog-in/)
-  assert.match(css, /@keyframes rubies-sheet-in/)
-  assert.match(css, /@keyframes rubies-screen-in/)
-  assert.match(css, /\.dialog-backdrop\.rubies-motion-dismissing/)
-  assert.match(css, /not\(:has\(\.settings-body\)\):not\(:has\(\.kind-toggle\)\):not\(:has\(\.move-flow\)\)/)
-})
-
-test('mobile sheets expose a drag handle and runtime swipe-to-dismiss behavior', async () => {
+test('desktop dialogs have a visible spring entrance and animation-driven exit', async () => {
   const css = await read('src/motion.css')
   const runtime = await read('src/motionRuntime.ts')
-  assert.match(css, /\.dialog-header::before[\s\S]*?inline-size:\s*38px/)
+  assert.match(css, /@keyframes rubies-dialog-in/)
+  assert.match(css, /--motion-dialog:\s*440ms/)
+  assert.match(css, /scale\(\.93\)/)
+  assert.match(runtime, /card\.animate\(/)
+  assert.match(runtime, /animation\.finished/)
+  assert.match(runtime, /duration:\s*mobile \? 410 : 320/)
+  assert.doesNotMatch(runtime, /const motionDelay/)
+})
+
+test('every mobile dialog surface slides up from below with slower sheet motion', async () => {
+  const css = await read('src/motion.css')
+  assert.match(css, /--motion-sheet:\s*540ms/)
+  assert.match(css, /@keyframes rubies-sheet-in[\s\S]*?translate3d\(0, 102%, 0\)/)
+  assert.match(css, /\.dialog-backdrop > \.dialog-card[\s\S]*?rubies-sheet-in/)
+  assert.doesNotMatch(css, /not\(:has\(\.settings-body\)\)/)
+  assert.doesNotMatch(css, /not\(:has\(\.kind-toggle\)\)/)
+})
+
+test('Move Money uses the same mobile bottom-sheet language', async () => {
+  const css = await read('src/motion.css')
+  assert.match(css, /\.move-money-modal-backdrop[\s\S]*?align-items:\s*flex-end\s*!important/)
+  assert.match(css, /\.move-money-modal-card[\s\S]*?border-radius:\s*22px 22px 0 0\s*!important/)
+})
+
+test('all mobile dialog headers expose drag affordance and swipe-to-dismiss', async () => {
+  const css = await read('src/motion.css')
+  const runtime = await read('src/motionRuntime.ts')
+  assert.match(css, /\.dialog-card > \.dialog-header::before[\s\S]*?inline-size:\s*42px/)
   assert.match(css, /rubies-sheet-dragging/)
   assert.match(css, /rubies-sheet-rebounding/)
   assert.match(runtime, /setPointerCapture/)
-  assert.match(runtime, /velocity > \.58/)
-  assert.match(runtime, /runAfterDismiss/)
+  assert.match(runtime, /velocity > \.5/)
+  assert.match(runtime, /Boolean\(card\.querySelector\('\.dialog-header \.icon-button'\)\)/)
+  assert.doesNotMatch(runtime, /settings-screen-card, \.transaction-screen-card, \.move-money-modal-card/)
 })
 
 test('motion respects reduced-motion preferences', async () => {
@@ -45,7 +64,7 @@ test('motion respects reduced-motion preferences', async () => {
 
 test('primary tab switching is intentionally not animated as page navigation', async () => {
   const css = await read('src/motion.css')
-  assert.match(css, /Page\/tab content deliberately does not transition when[\s\S]*?Plan and Accounts/)
+  assert.match(css, /Plan and Accounts are primary tabs[\s\S]*?does not animate/)
   assert.doesNotMatch(css, /\.view-shell\s*\{[\s\S]*?animation:/)
   assert.match(css, /\.mobile-nav button\.active svg/)
 })
