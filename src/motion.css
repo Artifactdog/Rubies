@@ -44,6 +44,16 @@
   to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 
+@keyframes rubies-group-expand {
+  from { opacity: 0; transform: translate3d(0, -6px, 0) scaleY(.985); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scaleY(1); }
+}
+
+@keyframes rubies-group-collapse {
+  from { opacity: 1; transform: translate3d(0, 0, 0) scaleY(1); }
+  to { opacity: 0; transform: translate3d(0, -6px, 0) scaleY(.985); }
+}
+
 /* Interaction motion. Page/tab content deliberately does not transition when
    switching between Plan and Accounts; only the selected navigation control does. */
 button,
@@ -100,7 +110,8 @@ textarea:focus {
 .category-name::after,
 .progress-track span,
 .rubies-slider-fill,
-.rubies-slider-thumb {
+.rubies-slider-thumb,
+.group-chevron {
   transition: transform var(--motion-ui) var(--ease-emphasized), opacity var(--motion-ui) var(--ease-standard), color var(--motion-ui) var(--ease-standard);
 }
 
@@ -184,11 +195,15 @@ textarea:focus {
   transition-timing-function: var(--ease-exit);
 }
 
-/* Make short-lived state changes feel deliberate without animating entire tabs. */
-.category-row,
-.transaction-table tbody tr,
-.account-overview > .account-card {
-  animation: rubies-content-in var(--motion-ui) var(--ease-emphasized) both;
+.group-categories.rubies-group-expanding {
+  transform-origin: top center;
+  animation: rubies-group-expand var(--motion-ui) var(--ease-emphasized) both;
+}
+
+.group-categories.rubies-group-collapsing {
+  transform-origin: top center;
+  animation: rubies-group-collapse 150ms var(--ease-exit) both;
+  pointer-events: none;
 }
 
 .kind-toggle button,
