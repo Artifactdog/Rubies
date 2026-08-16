@@ -64,7 +64,7 @@ test('motion respects reduced-motion preferences', async () => {
 
 test('primary tab switching is intentionally not animated as page navigation', async () => {
   const css = await read('src/motion.css')
-  assert.match(css, /Plan and Accounts are primary tabs[\s\S]*?does not animate/)
+  assert.match(css, /Plan and Accounts are primary tabs[\s\S]*?not animate between/)
   assert.doesNotMatch(css, /\.view-shell\s*\{[\s\S]*?animation:/)
   assert.match(css, /\.mobile-nav button\.active svg/)
 })
