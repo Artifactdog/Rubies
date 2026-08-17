@@ -45,5 +45,13 @@ test('Move Money actions stay in the sheet scroll surface instead of behind navi
 test('mobile From and To endpoints use full-width stacked layout', async () => {
   const css = await read('src/moveMoneyPolish.css')
   assert.match(css, /\.rubies-move-money-polished \.move-flow[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\)\s*!important/)
-  assert.match(css, /\.move-direction-button[\s\S]*?rotate\(90deg\)/)
+})
+
+test('direction arrow icon owns orientation while button keeps tactile transform motion', async () => {
+  const css = await read('src/moveMoneyPolish.css')
+  assert.match(css, /\.move-direction-button svg[\s\S]*?transition:\s*transform 340ms/)
+  assert.match(css, /@media \(max-width: 820px\)[\s\S]*?\.move-direction-button svg\s*\{[\s\S]*?rotate\(90deg\)/)
+  assert.match(css, /\.move-direction-button\.reverse svg\s*\{[\s\S]*?rotate\(-90deg\)/)
+  assert.doesNotMatch(css, /\.move-direction-button\s*\{[\s\S]{0,160}?transform:\s*rotate/)
+  assert.doesNotMatch(css, /\.move-direction-button\.reverse\s*\{[\s\S]{0,120}?transform:\s*rotate/)
 })
