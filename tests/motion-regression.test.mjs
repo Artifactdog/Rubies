@@ -68,6 +68,16 @@ test('swipe dismissal preserves the dragged visual position until exit animation
   assert.match(runtime, /Finish any entrance[\s\S]*?animation\.finish\(\)/)
 })
 
+test('committed mobile sheet dismissal can only continue downward', async () => {
+  const runtime = await read('src/motionRuntime.ts')
+  const mobileFrames = runtime.match(/mobile\s*\?\s*\[([\s\S]*?)\]\s*:\s*\[/)?.[1] ?? ''
+  assert.match(runtime, /const mobileExitY = Math\.ceil\(card\.getBoundingClientRect\(\)\.height \* 1\.08\)/)
+  assert.match(mobileFrames, /transform:\s*currentTransform/)
+  assert.match(mobileFrames, /translate3d\(0, \$\{mobileExitY\}px, 0\)/)
+  assert.doesNotMatch(mobileFrames, /translate3d\(0, 8%, 0\)/)
+  assert.doesNotMatch(mobileFrames, /offset:\s*\.18/)
+})
+
 test('mobile primary screens bypass modal close choreography', async () => {
   const runtime = await read('src/motionRuntime.ts')
   assert.match(runtime, /handleCloseClick[\s\S]*?isPrimaryMobileScreen\(card\)\) return false/)
