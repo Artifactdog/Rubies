@@ -10,9 +10,11 @@ import './mobile-screen-fixes.css'
 import './mobile-dialog-contract.css'
 import './mobile-consistency.css'
 import './motion.css'
+import './moveMoneyPolish.css'
 import { installUiRuntime } from './uiRuntime'
 import { installMobileViewport } from './mobileViewport'
 import { installMotionRuntime } from './motionRuntime'
+import { installMoveMoneyPolish } from './moveMoneyPolish'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -22,6 +24,7 @@ createRoot(document.getElementById('root')!).render(
 
 installMotionRuntime()
 installUiRuntime()
+installMoveMoneyPolish()
 installMobileViewport()
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
