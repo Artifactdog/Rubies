@@ -87,7 +87,7 @@ const enhanceSlider = (slider: HTMLInputElement) => {
     if (max <= 0) return
     const rect = overlay.getBoundingClientRect()
     const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width)))
-    setReactInput(input, Math.round(max * ratio * 100) / 100)
+    setReactInput(input, Math.round(max * ratio))
     sync()
   }
 
@@ -188,7 +188,7 @@ const enhanceMoveMoney = (card: HTMLElement) => {
     if (max <= 0) return
     const rect = overlay.getBoundingClientRect()
     const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width)))
-    setReactInput(amountInput, Math.round(max * ratio * 100) / 100)
+    setReactInput(amountInput, Math.round(max * ratio))
     sync()
   }
 
