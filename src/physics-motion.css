@@ -1,0 +1,10 @@
+/* Mobile sheet gesture physics are driven frame-by-frame by motionRuntime.ts.
+   These states must never inherit time-based CSS interpolation, otherwise the
+   browser eases between physics samples and the sheet feels delayed or rubbery. */
+@media (max-width: 820px) {
+  .dialog-backdrop:not(:has(.settings-body)):not(:has(.kind-toggle)) > .dialog-card.rubies-sheet-dragging,
+  .dialog-backdrop:not(:has(.settings-body)):not(:has(.kind-toggle)) > .dialog-card.rubies-sheet-rebounding {
+    transition: none !important;
+    will-change: transform, opacity;
+  }
+}
