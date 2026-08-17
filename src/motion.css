@@ -205,7 +205,12 @@ textarea:focus {
 }
 
 .dialog-backdrop.rubies-motion-dismissing {
+  animation: none !important;
   pointer-events: none !important;
+}
+
+.dialog-backdrop.rubies-motion-dismissing > .dialog-card {
+  animation: none !important;
 }
 
 .group-categories.rubies-group-expanding {
@@ -263,6 +268,10 @@ textarea:focus {
     --rubies-sheet-drag: 0px;
     animation: rubies-sheet-in var(--motion-sheet) var(--ease-sheet) both !important;
     transform-origin: center bottom;
+  }
+
+  .dialog-backdrop.rubies-motion-dismissing:not(:has(.settings-body)):not(:has(.kind-toggle)) > .dialog-card {
+    animation: none !important;
   }
 
   .dialog-backdrop:not(:has(.settings-body)):not(:has(.kind-toggle)) > .dialog-card > .dialog-header {
