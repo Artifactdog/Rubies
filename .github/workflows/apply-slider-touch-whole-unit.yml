@@ -1,0 +1,61 @@
+name: Apply touch slider whole-unit fix
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'fix/slider-touch-whole-unit-2026.8.17.6'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Patch custom pointer sliders
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          runtime = Path('src/uiRuntime.ts')
+          text = runtime.read_text()
+          old = 'Math.round(max * ratio * 100) / 100'
+          count = text.count(old)
+          if count != 2:
+              raise SystemExit(f'expected exactly 2 decimal pointer slider handlers, found {count}')
+          text = text.replace(old, 'Math.round(max * ratio)')
+          runtime.write_text(text)
+
+          package = Path('package.json')
+          package.write_text(package.read_text().replace('"version": "2026.8.17.5"', '"version": "2026.8.17.6"'))
+
+          version = Path('src/version.ts')
+          version.write_text(version.read_text().replace('2026.8.17.5', '2026.8.17.6'))
+
+          sw = Path('public/sw.js')
+          sw.write_text(sw.read_text().replace('rubies-shell-2026.8.17.5', 'rubies-shell-2026.8.17.6'))
+
+          test = Path('tests/money-slider.test.mjs')
+          existing = test.read_text() if test.exists() else "import test from 'node:test'\nimport assert from 'node:assert/strict'\nimport { readFileSync } from 'node:fs'\n\n"
+          if "custom touch sliders also snap" not in existing:
+              existing += "\nconst runtime = readFileSync(new URL('../src/uiRuntime.ts', import.meta.url), 'utf8')\n\ntest('custom touch sliders also snap to whole currency units', () => {\n  const matches = runtime.match(/setReactInput\\([^\\n]+Math\\.round\\(max \\* ratio\\)\\)/g) ?? []\n  assert.equal(matches.length, 2)\n  assert.doesNotMatch(runtime, /Math\\.round\\(max \\* ratio \\* 100\\) \\/ 100/)\n})\n"
+              test.write_text(existing)
+          PY
+      - name: Commit hotfix
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'Touch slider fix already applied.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/uiRuntime.ts package.json src/version.ts public/sw.js tests/money-slider.test.mjs
+          git commit -m 'Snap touch sliders to whole units'
+          git push origin HEAD:${{ github.head_ref }}
