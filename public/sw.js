@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rubies-shell-2026.8.17.1'
+const CACHE_NAME = 'rubies-shell-2026.8.17.2'
 const APP_SHELL = ['/', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png']
 
 self.addEventListener('install', (event) => {
