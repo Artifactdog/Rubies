@@ -8,6 +8,11 @@ const dialogBackdropFor = (element: Element | null) => element?.closest<HTMLElem
 
 const dialogCardFor = (backdrop: HTMLElement) => backdrop.querySelector<HTMLElement>(':scope > .dialog-card')
 
+const isPrimaryMobileScreen = (card: HTMLElement) => (
+  card.matches('.mobile-tab-card, .settings-screen-card, .transaction-screen-card, .transaction-mobile-screen')
+  || Boolean(card.querySelector('.settings-body, .kind-toggle'))
+)
+
 const clearDragState = (card: HTMLElement | null) => {
   if (!card) return
   card.classList.remove('rubies-sheet-dragging', 'rubies-sheet-rebounding')
@@ -17,9 +22,15 @@ const resetDismissState = (backdrop: HTMLElement) => {
   closingQueues.delete(backdrop)
   backdrop.classList.remove('rubies-motion-dismissing')
   delete backdrop.dataset.rubiesMotionClosing
+  backdrop.getAnimations().forEach((animation) => animation.cancel())
+  backdrop.style.removeProperty('opacity')
+
   const card = dialogCardFor(backdrop)
+  card?.getAnimations().forEach((animation) => animation.cancel())
   clearDragState(card)
   card?.style.removeProperty('--rubies-sheet-drag')
+  card?.style.removeProperty('transform')
+  card?.style.removeProperty('opacity')
 }
 
 const finished = (animation: Animation) => animation.finished.catch(() => undefined)
@@ -29,18 +40,22 @@ const playDismissAnimation = async (backdrop: HTMLElement) => {
   const card = dialogCardFor(backdrop)
   if (!card) return
 
-  clearDragState(card)
-  card.style.removeProperty('--rubies-sheet-drag')
-  card.getAnimations().forEach((animation) => animation.cancel())
-  backdrop.getAnimations().forEach((animation) => animation.cancel())
+  const mobile = mobileMotionMedia.matches
+  if (mobile && isPrimaryMobileScreen(card)) return
 
+  /* Read the visual state before clearing drag classes. Otherwise a swiped sheet
+     briefly snaps back to its fully-open transform before its exit begins. */
   const cardStyle = getComputedStyle(card)
   const backdropStyle = getComputedStyle(backdrop)
   const currentTransform = cardStyle.transform === 'none' ? 'translate3d(0, 0, 0) scale(1)' : cardStyle.transform
   const currentOpacity = Number.parseFloat(cardStyle.opacity) || 1
   const currentBackdropOpacity = Number.parseFloat(backdropStyle.opacity) || 1
 
-  const mobile = mobileMotionMedia.matches
+  card.getAnimations().forEach((animation) => animation.cancel())
+  backdrop.getAnimations().forEach((animation) => animation.cancel())
+  clearDragState(card)
+  card.style.removeProperty('--rubies-sheet-drag')
+
   const cardAnimation = card.animate(
     mobile
       ? [
@@ -118,6 +133,8 @@ const handleCloseClick = (event: MouseEvent) => {
 
   const backdrop = dialogBackdropFor(button)
   if (!backdrop) return false
+  const card = dialogCardFor(backdrop)
+  if (mobileMotionMedia.matches && card && isPrimaryMobileScreen(card)) return false
 
   event.preventDefault()
   event.stopImmediatePropagation()
@@ -129,6 +146,8 @@ const handleBackdropMouseDown = (event: MouseEvent) => {
   const target = event.target
   if (!(target instanceof HTMLElement) || !target.classList.contains('dialog-backdrop')) return
   const backdrop = target
+  const card = dialogCardFor(backdrop)
+  if (mobileMotionMedia.matches && card && isPrimaryMobileScreen(card)) return
 
   if (backdrop.dataset.rubiesMotionBackdropBypass === 'true') {
     delete backdrop.dataset.rubiesMotionBackdropBypass
@@ -150,6 +169,7 @@ const handleDialogSubmit = (event: SubmitEvent) => {
   if (!backdrop) return
   const card = dialogCardFor(backdrop)
   if (!card || card.querySelector('.settings-body') || card.matches('.move-money-modal-card') || card.querySelector('.move-flow')) return
+  if (mobileMotionMedia.matches && isPrimaryMobileScreen(card)) return
 
   if (form.dataset.rubiesMotionSubmitBypass === 'true') {
     delete form.dataset.rubiesMotionSubmitBypass
@@ -170,16 +190,6 @@ const handleDialogSubmit = (event: SubmitEvent) => {
       resetDismissState(backdrop)
     }, 80)
   })
-}
-
-const navButtons = () => [...document.querySelectorAll<HTMLButtonElement>('.mobile-nav button')]
-
-const navTargetIndex = (button: HTMLButtonElement) => navButtons().indexOf(button)
-
-const activeDialogNavIndex = (card: HTMLElement) => {
-  if (card.matches('.transaction-screen-card') || card.querySelector('.kind-toggle')) return 2
-  if (card.matches('.settings-screen-card') || card.querySelector('.settings-body')) return 3
-  return -1
 }
 
 const handleGroupToggle = (event: MouseEvent) => {
@@ -235,13 +245,9 @@ const handleMobileNavigation = (event: MouseEvent) => {
   const backdrop = card?.closest<HTMLElement>('.dialog-backdrop')
   if (!card || !backdrop) return false
 
-  const targetIndex = navTargetIndex(button)
-  const activeIndex = activeDialogNavIndex(card)
-  if (activeIndex === targetIndex) {
-    event.preventDefault()
-    event.stopImmediatePropagation()
-    return true
-  }
+  /* New and Settings are peer navigation screens. The existing nav runtime owns
+     switching them immediately; modal exit choreography must not intercept it. */
+  if (isPrimaryMobileScreen(card)) return false
 
   const closeButton = card.querySelector<HTMLButtonElement>('.dialog-header .icon-button')
   if (!closeButton) return false
@@ -270,7 +276,7 @@ type SwipeState = {
 let swipeState: SwipeState | null = null
 
 const isSwipeDismissibleSheet = (card: HTMLElement) => {
-  if (!mobileMotionMedia.matches || reducedMotionMedia.matches) return false
+  if (!mobileMotionMedia.matches || reducedMotionMedia.matches || isPrimaryMobileScreen(card)) return false
   return Boolean(card.querySelector('.dialog-header .icon-button'))
 }
 
@@ -284,6 +290,16 @@ const handleSheetPointerDown = (event: PointerEvent) => {
   if (!header || !card || !backdrop || !isSwipeDismissibleSheet(card)) return
   if (backdrop.dataset.rubiesMotionClosing === 'true') return
 
+  /* A sheet can be grabbed as soon as it is visible. Finish any entrance
+     animation first so pointer movement cannot fight a still-running transform. */
+  card.getAnimations().forEach((animation) => {
+    try {
+      animation.finish()
+    } catch {
+      animation.cancel()
+    }
+  })
+
   swipeState = {
     pointerId: event.pointerId,
     header,
@@ -294,6 +310,7 @@ const handleSheetPointerDown = (event: PointerEvent) => {
     startedAt: performance.now(),
     distance: 0,
   }
+  card.style.setProperty('--rubies-sheet-drag', '0px')
   header.setPointerCapture(event.pointerId)
 }
 
