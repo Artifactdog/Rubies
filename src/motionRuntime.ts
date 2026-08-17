@@ -50,6 +50,7 @@ const playDismissAnimation = async (backdrop: HTMLElement) => {
   const currentTransform = cardStyle.transform === 'none' ? 'translate3d(0, 0, 0) scale(1)' : cardStyle.transform
   const currentOpacity = Number.parseFloat(cardStyle.opacity) || 1
   const currentBackdropOpacity = Number.parseFloat(backdropStyle.opacity) || 1
+  const mobileExitY = Math.ceil(card.getBoundingClientRect().height * 1.08)
 
   card.getAnimations().forEach((animation) => animation.cancel())
   backdrop.getAnimations().forEach((animation) => animation.cancel())
@@ -59,9 +60,12 @@ const playDismissAnimation = async (backdrop: HTMLElement) => {
   const cardAnimation = card.animate(
     mobile
       ? [
-          { transform: currentTransform, opacity: currentOpacity, offset: 0 },
-          { transform: 'translate3d(0, 8%, 0) scale(.998)', opacity: 1, offset: .18 },
-          { transform: 'translate3d(0, 108%, 0) scale(.985)', opacity: .92, offset: 1 },
+          /* There is deliberately no intermediate waypoint here. A committed
+             swipe must continue from the exact finger position straight down;
+             any fixed percentage waypoint can make an already-dragged sheet
+             jump upward before it leaves the viewport. */
+          { transform: currentTransform, opacity: currentOpacity },
+          { transform: `translate3d(0, ${mobileExitY}px, 0) scale(.985)`, opacity: .92 },
         ]
       : [
           { transform: currentTransform, opacity: currentOpacity, offset: 0 },
