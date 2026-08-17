@@ -3,9 +3,11 @@ const reducedMotionMedia = window.matchMedia('(prefers-reduced-motion: reduce)')
 
 const closeSelector = '.dialog-header .icon-button, .dialog-actions .secondary-button'
 const closingQueues = new WeakMap<HTMLElement, Array<() => void>>()
+const sheetPositions = new WeakMap<HTMLElement, number>()
+const sheetPhysicsFrames = new WeakMap<HTMLElement, number>()
+const dismissVelocities = new WeakMap<HTMLElement, number>()
 
 const dialogBackdropFor = (element: Element | null) => element?.closest<HTMLElement>('.dialog-backdrop') ?? null
-
 const dialogCardFor = (backdrop: HTMLElement) => backdrop.querySelector<HTMLElement>(':scope > .dialog-card')
 
 const isPrimaryMobileScreen = (card: HTMLElement) => (
@@ -13,13 +15,40 @@ const isPrimaryMobileScreen = (card: HTMLElement) => (
   || Boolean(card.querySelector('.settings-body, .kind-toggle'))
 )
 
+const cancelSheetPhysics = (card: HTMLElement | null) => {
+  if (!card) return
+  const frame = sheetPhysicsFrames.get(card)
+  if (frame !== undefined) cancelAnimationFrame(frame)
+  sheetPhysicsFrames.delete(card)
+}
+
 const clearDragState = (card: HTMLElement | null) => {
   if (!card) return
+  cancelSheetPhysics(card)
   card.classList.remove('rubies-sheet-dragging', 'rubies-sheet-rebounding')
+}
+
+const setSheetPosition = (card: HTMLElement, backdrop: HTMLElement, position: number) => {
+  sheetPositions.set(card, position)
+  card.classList.add('rubies-sheet-dragging')
+  card.classList.remove('rubies-sheet-rebounding')
+  card.style.setProperty('--rubies-sheet-drag', `${position}px`)
+
+  const height = Math.max(1, card.getBoundingClientRect().height)
+  const progress = Math.max(0, Math.min(1, position / height))
+  backdrop.style.opacity = String(1 - progress * .42)
+}
+
+const clearSheetPosition = (card: HTMLElement, backdrop: HTMLElement) => {
+  sheetPositions.delete(card)
+  card.classList.remove('rubies-sheet-dragging', 'rubies-sheet-rebounding')
+  card.style.removeProperty('--rubies-sheet-drag')
+  backdrop.style.removeProperty('opacity')
 }
 
 const resetDismissState = (backdrop: HTMLElement) => {
   closingQueues.delete(backdrop)
+  dismissVelocities.delete(backdrop)
   backdrop.classList.remove('rubies-motion-dismissing')
   delete backdrop.dataset.rubiesMotionClosing
   backdrop.getAnimations().forEach((animation) => animation.cancel())
@@ -28,12 +57,110 @@ const resetDismissState = (backdrop: HTMLElement) => {
   const card = dialogCardFor(backdrop)
   card?.getAnimations().forEach((animation) => animation.cancel())
   clearDragState(card)
+  if (card) sheetPositions.delete(card)
   card?.style.removeProperty('--rubies-sheet-drag')
   card?.style.removeProperty('transform')
   card?.style.removeProperty('opacity')
 }
 
 const finished = (animation: Animation) => animation.finished.catch(() => undefined)
+
+const runDismissPhysics = (card: HTMLElement, backdrop: HTMLElement, releaseVelocity: number) => new Promise<void>((resolve) => {
+  cancelSheetPhysics(card)
+
+  let position = sheetPositions.get(card) ?? 0
+  let velocity = Math.max(0, releaseVelocity) * 1000
+  const target = Math.ceil(card.getBoundingClientRect().height * 1.08) + 24
+  const startedAt = performance.now()
+  let previousTime = startedAt
+
+  /* A tap-to-close gets a gentle initial push. A swipe keeps its measured
+     release velocity unchanged, so a fast flick stays fast after the finger
+     leaves the glass instead of snapping to a canned duration. */
+  if (velocity < 120) velocity = 420
+
+  setSheetPosition(card, backdrop, position)
+
+  const step = (now: number) => {
+    if (!document.contains(card)) {
+      sheetPhysicsFrames.delete(card)
+      resolve()
+      return
+    }
+
+    const dt = Math.min(0.032, Math.max(0.001, (now - previousTime) / 1000))
+    previousTime = now
+
+    const remaining = Math.max(0, target - position)
+    const acceleration = 5200 + remaining * 3.2 - velocity * 1.6
+    velocity = Math.max(80, velocity + acceleration * dt)
+    position += velocity * dt
+
+    setSheetPosition(card, backdrop, position)
+    const progress = Math.max(0, Math.min(1, position / target))
+    card.style.opacity = String(1 - progress * .06)
+
+    if (position >= target || now - startedAt > 900) {
+      setSheetPosition(card, backdrop, target)
+      backdrop.style.opacity = '0'
+      card.style.opacity = '.94'
+      sheetPhysicsFrames.delete(card)
+      resolve()
+      return
+    }
+
+    const frame = requestAnimationFrame(step)
+    sheetPhysicsFrames.set(card, frame)
+  }
+
+  const frame = requestAnimationFrame(step)
+  sheetPhysicsFrames.set(card, frame)
+})
+
+const runReboundPhysics = (card: HTMLElement, backdrop: HTMLElement, releaseVelocity: number) => {
+  cancelSheetPhysics(card)
+
+  let position = sheetPositions.get(card) ?? 0
+  let velocity = releaseVelocity * 1000
+  const stiffness = 245
+  const damping = 27
+  const startedAt = performance.now()
+  let previousTime = startedAt
+
+  card.classList.add('rubies-sheet-dragging')
+  card.classList.add('rubies-sheet-rebounding')
+
+  const step = (now: number) => {
+    if (!document.contains(card)) {
+      sheetPhysicsFrames.delete(card)
+      return
+    }
+
+    const dt = Math.min(0.032, Math.max(0.001, (now - previousTime) / 1000))
+    previousTime = now
+
+    const acceleration = -stiffness * position - damping * velocity
+    velocity += acceleration * dt
+    position += velocity * dt
+    if (position < -14) position = -14
+
+    setSheetPosition(card, backdrop, position)
+    card.classList.add('rubies-sheet-rebounding')
+
+    if ((Math.abs(position) < .35 && Math.abs(velocity) < 12) || now - startedAt > 900) {
+      setSheetPosition(card, backdrop, 0)
+      clearSheetPosition(card, backdrop)
+      sheetPhysicsFrames.delete(card)
+      return
+    }
+
+    const frame = requestAnimationFrame(step)
+    sheetPhysicsFrames.set(card, frame)
+  }
+
+  const frame = requestAnimationFrame(step)
+  sheetPhysicsFrames.set(card, frame)
+}
 
 const playDismissAnimation = async (backdrop: HTMLElement) => {
   if (reducedMotionMedia.matches) return
@@ -43,38 +170,35 @@ const playDismissAnimation = async (backdrop: HTMLElement) => {
   const mobile = mobileMotionMedia.matches
   if (mobile && isPrimaryMobileScreen(card)) return
 
-  /* Read the visual state before clearing drag classes. Otherwise a swiped sheet
-     briefly snaps back to its fully-open transform before its exit begins. */
+  card.getAnimations().forEach((animation) => animation.cancel())
+  backdrop.getAnimations().forEach((animation) => animation.cancel())
+
+  if (mobile) {
+    const releaseVelocity = dismissVelocities.get(backdrop) ?? 0
+    dismissVelocities.delete(backdrop)
+    await runDismissPhysics(card, backdrop, releaseVelocity)
+    return
+  }
+
   const cardStyle = getComputedStyle(card)
   const backdropStyle = getComputedStyle(backdrop)
   const currentTransform = cardStyle.transform === 'none' ? 'translate3d(0, 0, 0) scale(1)' : cardStyle.transform
   const currentOpacity = Number.parseFloat(cardStyle.opacity) || 1
   const currentBackdropOpacity = Number.parseFloat(backdropStyle.opacity) || 1
-  const mobileExitY = Math.ceil(card.getBoundingClientRect().height * 1.08)
 
-  card.getAnimations().forEach((animation) => animation.cancel())
-  backdrop.getAnimations().forEach((animation) => animation.cancel())
   clearDragState(card)
+  sheetPositions.delete(card)
   card.style.removeProperty('--rubies-sheet-drag')
 
   const cardAnimation = card.animate(
-    mobile
-      ? [
-          /* There is deliberately no intermediate waypoint here. A committed
-             swipe must continue from the exact finger position straight down;
-             any fixed percentage waypoint can make an already-dragged sheet
-             jump upward before it leaves the viewport. */
-          { transform: currentTransform, opacity: currentOpacity },
-          { transform: `translate3d(0, ${mobileExitY}px, 0) scale(.985)`, opacity: .92 },
-        ]
-      : [
-          { transform: currentTransform, opacity: currentOpacity, offset: 0 },
-          { transform: 'translate3d(0, 3px, 0) scale(.995)', opacity: .98, offset: .18 },
-          { transform: 'translate3d(0, 30px, 0) scale(.925)', opacity: 0, offset: 1 },
-        ],
+    [
+      { transform: currentTransform, opacity: currentOpacity, offset: 0 },
+      { transform: 'translate3d(0, 3px, 0) scale(.995)', opacity: .98, offset: .18 },
+      { transform: 'translate3d(0, 30px, 0) scale(.925)', opacity: 0, offset: 1 },
+    ],
     {
-      duration: mobile ? 410 : 320,
-      easing: mobile ? 'cubic-bezier(.32, 0, .67, 0)' : 'cubic-bezier(.4, 0, .2, 1)',
+      duration: 320,
+      easing: 'cubic-bezier(.4, 0, .2, 1)',
       fill: 'forwards',
     },
   )
@@ -85,7 +209,7 @@ const playDismissAnimation = async (backdrop: HTMLElement) => {
       { opacity: 0 },
     ],
     {
-      duration: mobile ? 360 : 280,
+      duration: 280,
       easing: 'cubic-bezier(.4, 0, 1, 1)',
       fill: 'forwards',
     },
@@ -249,8 +373,6 @@ const handleMobileNavigation = (event: MouseEvent) => {
   const backdrop = card?.closest<HTMLElement>('.dialog-backdrop')
   if (!card || !backdrop) return false
 
-  /* New and Settings are peer navigation screens. The existing nav runtime owns
-     switching them immediately; modal exit choreography must not intercept it. */
   if (isPrimaryMobileScreen(card)) return false
 
   const closeButton = card.querySelector<HTMLButtonElement>('.dialog-header .icon-button')
@@ -266,6 +388,8 @@ const handleMobileNavigation = (event: MouseEvent) => {
   return true
 }
 
+type VelocitySample = { y: number; time: number }
+
 type SwipeState = {
   pointerId: number
   header: HTMLElement
@@ -273,8 +397,9 @@ type SwipeState = {
   backdrop: HTMLElement
   startY: number
   startX: number
-  startedAt: number
+  startOffset: number
   distance: number
+  samples: VelocitySample[]
 }
 
 let swipeState: SwipeState | null = null
@@ -282,6 +407,21 @@ let swipeState: SwipeState | null = null
 const isSwipeDismissibleSheet = (card: HTMLElement) => {
   if (!mobileMotionMedia.matches || reducedMotionMedia.matches || isPrimaryMobileScreen(card)) return false
   return Boolean(card.querySelector('.dialog-header .icon-button'))
+}
+
+const addVelocitySample = (state: SwipeState, y: number, time: number) => {
+  state.samples.push({ y, time })
+  const cutoff = time - 90
+  while (state.samples.length > 2 && state.samples[0].time < cutoff) state.samples.shift()
+  if (state.samples.length > 8) state.samples.shift()
+}
+
+const releaseVelocityFor = (state: SwipeState) => {
+  if (state.samples.length < 2) return 0
+  const first = state.samples[0]
+  const last = state.samples[state.samples.length - 1]
+  const elapsed = Math.max(1, last.time - first.time)
+  return (last.y - first.y) / elapsed
 }
 
 const handleSheetPointerDown = (event: PointerEvent) => {
@@ -294,8 +434,8 @@ const handleSheetPointerDown = (event: PointerEvent) => {
   if (!header || !card || !backdrop || !isSwipeDismissibleSheet(card)) return
   if (backdrop.dataset.rubiesMotionClosing === 'true') return
 
-  /* A sheet can be grabbed as soon as it is visible. Finish any entrance
-     animation first so pointer movement cannot fight a still-running transform. */
+  cancelSheetPhysics(card)
+
   card.getAnimations().forEach((animation) => {
     try {
       animation.finish()
@@ -303,7 +443,16 @@ const handleSheetPointerDown = (event: PointerEvent) => {
       animation.cancel()
     }
   })
+  backdrop.getAnimations().forEach((animation) => {
+    try {
+      animation.finish()
+    } catch {
+      animation.cancel()
+    }
+  })
 
+  const now = performance.now()
+  const startOffset = Math.max(0, sheetPositions.get(card) ?? 0)
   swipeState = {
     pointerId: event.pointerId,
     header,
@@ -311,37 +460,28 @@ const handleSheetPointerDown = (event: PointerEvent) => {
     backdrop,
     startY: event.clientY,
     startX: event.clientX,
-    startedAt: performance.now(),
-    distance: 0,
+    startOffset,
+    distance: startOffset,
+    samples: [{ y: event.clientY, time: now }],
   }
-  card.style.setProperty('--rubies-sheet-drag', '0px')
+  setSheetPosition(card, backdrop, startOffset)
   header.setPointerCapture(event.pointerId)
 }
 
 const handleSheetPointerMove = (event: PointerEvent) => {
   const state = swipeState
   if (!state || state.pointerId !== event.pointerId) return
-  const deltaY = Math.max(0, event.clientY - state.startY)
+
+  const rawDeltaY = event.clientY - state.startY
+  const distance = Math.max(0, state.startOffset + rawDeltaY)
   const deltaX = Math.abs(event.clientX - state.startX)
-  if (deltaY < 4 || deltaX > deltaY * 1.15) return
+  const verticalTravel = Math.abs(rawDeltaY)
+  if (verticalTravel < 4 || deltaX > verticalTravel * 1.15) return
 
   event.preventDefault()
-  state.distance = deltaY
-  state.card.classList.remove('rubies-sheet-rebounding')
-  state.card.classList.add('rubies-sheet-dragging')
-  state.card.style.setProperty('--rubies-sheet-drag', `${deltaY}px`)
-}
-
-const reboundSheet = (state: SwipeState) => {
-  const { card } = state
-  card.classList.remove('rubies-sheet-dragging')
-  card.classList.add('rubies-sheet-rebounding')
-  requestAnimationFrame(() => card.style.setProperty('--rubies-sheet-drag', '0px'))
-  window.setTimeout(() => {
-    if (!document.contains(card)) return
-    card.classList.remove('rubies-sheet-rebounding')
-    card.style.removeProperty('--rubies-sheet-drag')
-  }, 440)
+  state.distance = distance
+  addVelocitySample(state, event.clientY, performance.now())
+  setSheetPosition(state.card, state.backdrop, distance)
 }
 
 const finishSheetSwipe = (event: PointerEvent, cancelled = false) => {
@@ -350,18 +490,26 @@ const finishSheetSwipe = (event: PointerEvent, cancelled = false) => {
   swipeState = null
 
   if (state.header.hasPointerCapture(event.pointerId)) state.header.releasePointerCapture(event.pointerId)
-  const elapsed = Math.max(1, performance.now() - state.startedAt)
-  const velocity = state.distance / elapsed
-  const threshold = Math.min(170, Math.max(92, state.card.getBoundingClientRect().height * .14))
+  addVelocitySample(state, event.clientY, performance.now())
 
-  if (!cancelled && (state.distance >= threshold || (state.distance >= 42 && velocity > .5))) {
+  const velocity = releaseVelocityFor(state)
+  const threshold = Math.min(170, Math.max(92, state.card.getBoundingClientRect().height * .14))
+  const projectedDistance = state.distance + Math.max(0, velocity) * 180
+  const shouldDismiss = !cancelled && (
+    state.distance >= threshold
+    || (state.distance >= 18 && velocity > .45 && projectedDistance >= threshold)
+  )
+
+  if (shouldDismiss) {
     const closeButton = state.card.querySelector<HTMLButtonElement>('.dialog-header .icon-button')
     if (closeButton) {
+      dismissVelocities.set(state.backdrop, Math.max(0, velocity))
       runAfterDismiss(state.backdrop, () => clickWithoutDismiss(closeButton))
       return
     }
   }
-  reboundSheet(state)
+
+  runReboundPhysics(state.card, state.backdrop, velocity)
 }
 
 const handleSheetPointerUp = (event: PointerEvent) => finishSheetSwipe(event)
