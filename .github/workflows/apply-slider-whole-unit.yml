@@ -1,0 +1,95 @@
+name: Apply whole-unit slider fix
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'fix/slider-whole-unit-2026.8.17.5'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Patch money slider and release metadata
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          app = Path('src/App.tsx')
+          text = app.read_text()
+          old = '''  const safeMax = Math.max(1, Math.round(max))
+          const clamped = Math.max(0, Math.min(safeMax, value))
+          const position = Math.round((clamped / safeMax) * 1000)
+          const fill = `${position / 10}%`
+          const moneyStep = safeMax >= 10_000_000
+            ? 10_000
+            : safeMax >= 1_000_000
+              ? 1_000
+              : safeMax >= 100_000
+                ? 100
+                : 1
+          '''
+          new = '''  const safeMax = Math.max(100, Math.ceil(max / 100) * 100)
+          const maxWholeUnits = Math.max(1, Math.round(safeMax / 100))
+          const wholeUnitValue = Math.max(0, Math.min(maxWholeUnits, Math.round(value / 100)))
+          const fill = `${(wholeUnitValue / maxWholeUnits) * 100}%`
+          '''
+          if old not in text:
+              if 'const maxWholeUnits = Math.max(1, Math.round(safeMax / 100))' not in text:
+                  raise SystemExit('slider calculation block not found')
+          else:
+              text = text.replace(old, new, 1)
+
+          old_input = '''        max="1000"
+                  step="1"
+                  value={position}
+                  onChange={(event) => {
+                    const raw = (Number(event.target.value) / 1000) * safeMax
+                    onChange(Math.round(raw / moneyStep) * moneyStep)
+                  }}
+          '''
+          new_input = '''        max={maxWholeUnits}
+                  step="1"
+                  value={wholeUnitValue}
+                  onChange={(event) => onChange(Number(event.target.value) * 100)}
+          '''
+          if old_input not in text:
+              if 'max={maxWholeUnits}' not in text:
+                  raise SystemExit('slider input block not found')
+          else:
+              text = text.replace(old_input, new_input, 1)
+          app.write_text(text)
+
+          package = Path('package.json')
+          package_text = package.read_text().replace('"version": "2026.8.17.4"', '"version": "2026.8.17.5"')
+          package.write_text(package_text)
+
+          version = Path('src/version.ts')
+          version.write_text(version.read_text().replace("2026.8.17.4", "2026.8.17.5"))
+
+          sw = Path('public/sw.js')
+          sw.write_text(sw.read_text().replace('rubies-shell-2026.8.17.4', 'rubies-shell-2026.8.17.5'))
+
+          test = Path('tests/money-slider.test.mjs')
+          test.write_text('''import test from 'node:test'\nimport assert from 'node:assert/strict'\nimport { readFileSync } from 'node:fs'\n\nconst app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')\n\ntest('money sliders advance in exact whole currency units', () => {\n  assert.match(app, /const maxWholeUnits = Math\\.max\\(1, Math\\.round\\(safeMax \\/ 100\\)\\)/)\n  assert.match(app, /max=\\{maxWholeUnits\\}[\\s\\S]*step="1"[\\s\\S]*value=\\{wholeUnitValue\\}/)\n  assert.match(app, /onChange=\\{\\(event\\) => onChange\\(Number\\(event\\.target\\.value\\) \\* 100\\)\\}/)\n  assert.doesNotMatch(app, /const moneyStep =/)\n  assert.doesNotMatch(app, /max="1000"/)\n})\n''')
+          PY
+      - name: Commit generated fix
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'Slider fix already applied.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/App.tsx package.json src/version.ts public/sw.js tests/money-slider.test.mjs
+          git commit -m 'Make money sliders use whole-unit steps'
+          git push origin HEAD:${{ github.head_ref }}
