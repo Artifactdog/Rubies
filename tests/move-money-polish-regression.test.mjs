@@ -52,6 +52,6 @@ test('direction arrow icon owns orientation while button keeps tactile transform
   assert.match(css, /\.move-direction-button svg[\s\S]*?transition:\s*transform 340ms/)
   assert.match(css, /@media \(max-width: 820px\)[\s\S]*?\.move-direction-button svg\s*\{[\s\S]*?rotate\(90deg\)/)
   assert.match(css, /\.move-direction-button\.reverse svg\s*\{[\s\S]*?rotate\(-90deg\)/)
-  assert.doesNotMatch(css, /\.move-direction-button\s*\{[\s\S]{0,160}?transform:\s*rotate/)
-  assert.doesNotMatch(css, /\.move-direction-button\.reverse\s*\{[\s\S]{0,120}?transform:\s*rotate/)
+  assert.doesNotMatch(css, /\.move-direction-button\s*\{[^}]*transform:\s*rotate/)
+  assert.doesNotMatch(css, /\.move-direction-button\.reverse\s*\{[^}]*transform:\s*rotate/)
 })
