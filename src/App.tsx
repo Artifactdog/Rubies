@@ -269,17 +269,10 @@ const NormalizedMoneySlider = ({
   currency: string
   onChange: (value: number) => void
 }) => {
-  const safeMax = Math.max(1, Math.round(max))
-  const clamped = Math.max(0, Math.min(safeMax, value))
-  const position = Math.round((clamped / safeMax) * 1000)
-  const fill = `${position / 10}%`
-  const moneyStep = safeMax >= 10_000_000
-    ? 10_000
-    : safeMax >= 1_000_000
-      ? 1_000
-      : safeMax >= 100_000
-        ? 100
-        : 1
+  const safeMax = Math.max(100, Math.ceil(max / 100) * 100)
+  const maxWholeUnits = Math.max(1, Math.round(safeMax / 100))
+  const wholeUnitValue = Math.max(0, Math.min(maxWholeUnits, Math.round(value / 100)))
+  const fill = `${(wholeUnitValue / maxWholeUnits) * 100}%`
 
   return (
     <div className="normalized-slider">
@@ -287,13 +280,10 @@ const NormalizedMoneySlider = ({
         className="money-slider"
         type="range"
         min="0"
-        max="1000"
+        max={maxWholeUnits}
         step="1"
-        value={position}
-        onChange={(event) => {
-          const raw = (Number(event.target.value) / 1000) * safeMax
-          onChange(Math.round(raw / moneyStep) * moneyStep)
-        }}
+        value={wholeUnitValue}
+        onChange={(event) => onChange(Number(event.target.value) * 100)}
         style={{ '--slider-fill': fill } as CSSProperties}
         aria-label="Adjust amount with slider"
       />
