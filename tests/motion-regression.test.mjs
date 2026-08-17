@@ -28,31 +28,51 @@ test('desktop dialogs have a visible spring entrance and animation-driven exit',
   assert.doesNotMatch(runtime, /const motionDelay/)
 })
 
-test('every mobile dialog surface slides up from below with slower sheet motion', async () => {
+test('actual mobile dialogs slide up while New and Settings remain primary screens', async () => {
   const css = await read('src/motion.css')
   assert.match(css, /--motion-sheet:\s*540ms/)
   assert.match(css, /@keyframes rubies-sheet-in[\s\S]*?translate3d\(0, 102%, 0\)/)
-  assert.match(css, /\.dialog-backdrop > \.dialog-card[\s\S]*?rubies-sheet-in/)
-  assert.doesNotMatch(css, /not\(:has\(\.settings-body\)\)/)
-  assert.doesNotMatch(css, /not\(:has\(\.kind-toggle\)\)/)
+  assert.match(css, /\.dialog-backdrop:not\(:has\(\.settings-body\)\):not\(:has\(\.kind-toggle\)\) > \.dialog-card[\s\S]*?rubies-sheet-in/)
+  assert.match(css, /\.dialog-backdrop:has\(\.settings-body\),[\s\S]*?\.dialog-backdrop:has\(\.kind-toggle\)[\s\S]*?animation:\s*none\s*!important/)
+  assert.match(css, /\.dialog-backdrop:has\(\.settings-body\) > \.dialog-card,[\s\S]*?\.transaction-screen-card[\s\S]*?animation:\s*none\s*!important/)
 })
 
-test('Move Money uses the same mobile bottom-sheet language', async () => {
+test('Move Money uses the mobile bottom-sheet language', async () => {
   const css = await read('src/motion.css')
   assert.match(css, /\.move-money-modal-backdrop[\s\S]*?align-items:\s*flex-end\s*!important/)
   assert.match(css, /\.move-money-modal-card[\s\S]*?border-radius:\s*22px 22px 0 0\s*!important/)
 })
 
-test('all mobile dialog headers expose drag affordance and swipe-to-dismiss', async () => {
+test('only actual mobile dialogs expose drag affordance and swipe-to-dismiss', async () => {
   const css = await read('src/motion.css')
   const runtime = await read('src/motionRuntime.ts')
-  assert.match(css, /\.dialog-card > \.dialog-header::before[\s\S]*?inline-size:\s*42px/)
+  assert.match(css, /not\(:has\(\.settings-body\)\):not\(:has\(\.kind-toggle\)\)[\s\S]*?> \.dialog-card > \.dialog-header::before[\s\S]*?inline-size:\s*42px/)
   assert.match(css, /rubies-sheet-dragging/)
   assert.match(css, /rubies-sheet-rebounding/)
+  assert.match(runtime, /const isPrimaryMobileScreen/)
+  assert.match(runtime, /isSwipeDismissibleSheet[\s\S]*?isPrimaryMobileScreen\(card\)/)
   assert.match(runtime, /setPointerCapture/)
   assert.match(runtime, /velocity > \.5/)
-  assert.match(runtime, /Boolean\(card\.querySelector\('\.dialog-header \.icon-button'\)\)/)
-  assert.doesNotMatch(runtime, /settings-screen-card, \.transaction-screen-card, \.move-money-modal-card/)
+})
+
+test('swipe dismissal preserves the dragged visual position until exit animation owns it', async () => {
+  const runtime = await read('src/motionRuntime.ts')
+  const dismissStart = runtime.indexOf('const playDismissAnimation')
+  const capture = runtime.indexOf('const currentTransform', dismissStart)
+  const clear = runtime.indexOf('clearDragState(card)', capture)
+  const animate = runtime.indexOf('const cardAnimation = card.animate', clear)
+  assert.ok(dismissStart >= 0)
+  assert.ok(capture > dismissStart)
+  assert.ok(clear > capture)
+  assert.ok(animate > clear)
+  assert.match(runtime, /Finish any entrance[\s\S]*?animation\.finish\(\)/)
+})
+
+test('mobile primary screens bypass modal close choreography', async () => {
+  const runtime = await read('src/motionRuntime.ts')
+  assert.match(runtime, /handleCloseClick[\s\S]*?isPrimaryMobileScreen\(card\)\) return false/)
+  assert.match(runtime, /handleMobileNavigation[\s\S]*?isPrimaryMobileScreen\(card\)\) return false/)
+  assert.match(runtime, /handleDialogSubmit[\s\S]*?isPrimaryMobileScreen\(card\)\) return/)
 })
 
 test('motion respects reduced-motion preferences', async () => {
@@ -62,9 +82,9 @@ test('motion respects reduced-motion preferences', async () => {
   assert.match(runtime, /prefers-reduced-motion: reduce/)
 })
 
-test('primary tab switching is intentionally not animated as page navigation', async () => {
+test('primary mobile navigation does not animate as modal navigation', async () => {
   const css = await read('src/motion.css')
-  assert.match(css, /Plan and Accounts are primary tabs[\s\S]*?not animate between/)
+  assert.match(css, /Plan, Accounts, New and Settings are primary mobile navigation destinations/)
   assert.doesNotMatch(css, /\.view-shell\s*\{[\s\S]*?animation:/)
   assert.match(css, /\.mobile-nav button\.active svg/)
 })
