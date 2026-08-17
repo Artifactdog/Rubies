@@ -75,8 +75,9 @@
   to { opacity: 0; transform: translate3d(0, -8px, 0) scaleY(.98); }
 }
 
-/* Plan and Accounts are primary tabs, so their page content intentionally does
-   not animate between each other. The navigation selection itself does. */
+/* Plan, Accounts, New and Settings are primary mobile navigation destinations.
+   They do not use modal/sheet motion between each other; only the navigation
+   selection animates. */
 button,
 input,
 select,
@@ -233,22 +234,45 @@ textarea:focus {
 }
 
 @media (max-width: 820px) {
-  /* Every modal surface enters from below on mobile, including New, Settings,
-     Move Money and the smaller edit/confirmation sheets. */
-  .dialog-backdrop > .dialog-card {
+  /* New and Settings are primary navigation screens. They are already laid out
+     as full phone screens by mobile-native.css and must never inherit dialog
+     entrance/backdrop motion or drag affordances. :has() makes this true on the
+     very first frame, before uiRuntime attaches semantic screen classes. */
+  .dialog-backdrop:has(.settings-body),
+  .dialog-backdrop:has(.kind-toggle) {
+    animation: none !important;
+    opacity: 1 !important;
+    backdrop-filter: none !important;
+  }
+
+  .dialog-backdrop:has(.settings-body) > .dialog-card,
+  .dialog-backdrop:has(.kind-toggle) > .dialog-card,
+  .mobile-tab-card,
+  .settings-screen-card,
+  .transaction-screen-card,
+  .transaction-mobile-screen {
+    animation: none !important;
+    transform: none !important;
+    transform-origin: center center;
+    will-change: auto;
+  }
+
+  /* Actual dialogs are bottom sheets. Move Money remains a sheet; only the two
+     primary-screen surfaces above are excluded. */
+  .dialog-backdrop:not(:has(.settings-body)):not(:has(.kind-toggle)) > .dialog-card {
     --rubies-sheet-drag: 0px;
     animation: rubies-sheet-in var(--motion-sheet) var(--ease-sheet) both !important;
     transform-origin: center bottom;
   }
 
-  .dialog-card > .dialog-header {
+  .dialog-backdrop:not(:has(.settings-body)):not(:has(.kind-toggle)) > .dialog-card > .dialog-header {
     position: relative;
     padding-top: 29px !important;
     touch-action: none;
     user-select: none;
   }
 
-  .dialog-card > .dialog-header::before {
+  .dialog-backdrop:not(:has(.settings-body)):not(:has(.kind-toggle)) > .dialog-card > .dialog-header::before {
     content: "";
     position: absolute;
     top: 10px;
@@ -261,20 +285,20 @@ textarea:focus {
     transform: translateX(-50%);
   }
 
-  .dialog-card.rubies-sheet-dragging {
+  .dialog-backdrop:not(:has(.settings-body)):not(:has(.kind-toggle)) > .dialog-card.rubies-sheet-dragging {
     animation: none !important;
     transform: translate3d(0, var(--rubies-sheet-drag), 0) !important;
     transition: none !important;
   }
 
-  .dialog-card.rubies-sheet-rebounding {
+  .dialog-backdrop:not(:has(.settings-body)):not(:has(.kind-toggle)) > .dialog-card.rubies-sheet-rebounding {
     animation: none !important;
     transform: translate3d(0, var(--rubies-sheet-drag), 0) !important;
     transition: transform 430ms var(--ease-sheet) !important;
   }
 
   /* Move Money is a real bottom sheet on phones instead of a centered desktop
-     modal. This also makes its gesture and visual language match every dialog. */
+     modal. Its gesture and visual language match other actual dialogs. */
   .move-money-modal-backdrop {
     align-items: flex-end !important;
     justify-content: center !important;
