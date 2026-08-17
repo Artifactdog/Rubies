@@ -1,0 +1,147 @@
+.rubies-move-money-polished .move-flow label {
+  min-inline-size: 0;
+}
+
+.rubies-move-money-polished .move-endpoint-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(185, 155, 255, .18);
+  border-radius: 10px;
+  background: rgba(185, 155, 255, .055);
+  font-variant-numeric: tabular-nums;
+}
+
+.rubies-move-money-polished .move-endpoint-summary-label {
+  color: var(--subtle);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .045em;
+  text-transform: uppercase;
+}
+
+.rubies-move-money-polished .move-endpoint-summary strong {
+  min-inline-size: 0;
+  overflow: hidden;
+  color: var(--accent-strong);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 820px) {
+  /* Move Money is a real sheet above the persistent navigation. Its usable
+     viewport ends where the bottom nav begins; interactive controls must never
+     live underneath that navigation surface. */
+  .move-money-modal-backdrop {
+    inset: 0 0 var(--rubies-mobile-nav-height, 88px) 0 !important;
+    block-size: auto !important;
+    max-block-size: none !important;
+    align-items: flex-end !important;
+    justify-content: center !important;
+    padding: max(8px, env(safe-area-inset-top, 0px)) 0 0 !important;
+    overflow: hidden !important;
+  }
+
+  .move-money-modal-card {
+    inline-size: 100% !important;
+    max-inline-size: 100% !important;
+    block-size: auto !important;
+    min-block-size: 0 !important;
+    max-block-size: calc(100dvh - var(--rubies-mobile-nav-height, 88px) - max(8px, env(safe-area-inset-top, 0px))) !important;
+    margin: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    border-radius: 22px 22px 0 0 !important;
+  }
+
+  .move-money-modal-card > .dialog-header {
+    flex: 0 0 auto !important;
+  }
+
+  .move-money-modal-card .dialog-content:has(> form > .dialog-actions) {
+    flex: 1 1 auto !important;
+    block-size: auto !important;
+    min-block-size: 0 !important;
+    overflow: hidden !important;
+    padding: 0 !important;
+  }
+
+  .move-money-modal-card .dialog-content:has(> form > .dialog-actions) > form {
+    block-size: auto !important;
+    min-block-size: 0 !important;
+    max-block-size: 100% !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior-y: contain !important;
+    -webkit-overflow-scrolling: touch;
+    box-sizing: border-box !important;
+    padding: 16px 16px 0 !important;
+    scroll-padding-bottom: 86px !important;
+  }
+
+  .move-money-modal-card .dialog-content:has(> form > .dialog-actions) > form > .dialog-actions {
+    position: sticky !important;
+    z-index: 12 !important;
+    inset: auto !important;
+    bottom: 0 !important;
+    min-block-size: 72px !important;
+    margin: 24px -16px 0 !important;
+    padding: 11px 16px 12px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: 9px !important;
+    border-top: 1px solid var(--border) !important;
+    background: rgba(26, 24, 30, .99) !important;
+    box-shadow: 0 -10px 28px rgba(0, 0, 0, .32) !important;
+  }
+
+  /* Long category names and balances need room. A phone gets two full-width
+     endpoints rather than squeezing them into a desktop three-column row. */
+  .rubies-move-money-polished .move-flow {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  .rubies-move-money-polished .move-flow > label {
+    inline-size: 100% !important;
+  }
+
+  .rubies-move-money-polished .move-flow select {
+    inline-size: 100% !important;
+    max-inline-size: 100% !important;
+  }
+
+  .rubies-move-money-polished .move-arrow,
+  .rubies-move-money-polished .move-direction-button {
+    justify-self: center !important;
+    margin: -1px 0 !important;
+    transform: rotate(90deg) !important;
+  }
+
+  .rubies-move-money-polished .move-direction-button.reverse {
+    transform: rotate(270deg) !important;
+  }
+
+  .rubies-move-money-polished .source-balance {
+    display: none !important;
+  }
+
+  .rubies-move-money-polished .move-endpoint-summary {
+    min-block-size: 38px;
+    margin-top: 7px;
+    padding: 8px 11px;
+    border-radius: 11px;
+    background: linear-gradient(135deg, rgba(185, 155, 255, .09), rgba(185, 155, 255, .035));
+  }
+
+  .rubies-move-money-polished .move-endpoint-summary strong {
+    font-size: 14px;
+  }
+}
