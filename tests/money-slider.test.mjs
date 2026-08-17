@@ -11,3 +11,11 @@ test('money sliders advance in exact whole currency units', () => {
   assert.doesNotMatch(app, /const moneyStep =/)
   assert.doesNotMatch(app, /max="1000"/)
 })
+
+const runtime = readFileSync(new URL('../src/uiRuntime.ts', import.meta.url), 'utf8')
+
+test('custom touch sliders also snap to whole currency units', () => {
+  const matches = runtime.match(/setReactInput\([^\n]+Math\.round\(max \* ratio\)\)/g) ?? []
+  assert.equal(matches.length, 2)
+  assert.doesNotMatch(runtime, /Math\.round\(max \* ratio \* 100\) \/ 100/)
+})
