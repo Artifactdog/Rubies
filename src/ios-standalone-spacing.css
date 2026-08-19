@@ -1,0 +1,25 @@
+/* Small standalone-PWA comfort offset for Dynamic Island/status-bar devices.
+   Safari/browser mode keeps the existing safe-area geometry unchanged. */
+
+@media (display-mode: standalone) and (max-width: 820px) {
+  :root {
+    --rubies-standalone-top-comfort: 6px;
+  }
+
+  .app-shell {
+    padding-top: calc(var(--rubies-safe-top, env(safe-area-inset-top, 0px)) + var(--rubies-standalone-top-comfort)) !important;
+  }
+
+  .dialog-backdrop:has(.settings-body),
+  .dialog-backdrop:has(.kind-toggle),
+  .mobile-tab-backdrop,
+  .settings-screen-backdrop,
+  .transaction-screen-backdrop,
+  .transaction-mobile-backdrop {
+    top: calc(var(--rubies-safe-top, env(safe-area-inset-top, 0px)) + var(--rubies-standalone-top-comfort)) !important;
+  }
+
+  .budget-health-hud {
+    top: calc(var(--rubies-safe-top, env(safe-area-inset-top, 0px)) + 8px + var(--rubies-standalone-top-comfort)) !important;
+  }
+}
