@@ -1,9 +1,18 @@
 /* Mobile sheet gesture physics are driven frame-by-frame by motionRuntime.ts.
    These states must never inherit time-based CSS interpolation, otherwise the
-   browser eases between physics samples and the sheet feels delayed or rubbery. */
+   browser eases between physics samples and the sheet feels delayed or rubbery.
+
+   Keep the sheet's entrance animation identity intact while physics owns the
+   transform. motionRuntime finishes that animation before taking gesture control.
+   Replacing it with `animation: none` would create a brand-new entrance animation
+   when the drag/rebound class is removed, producing a visible down/up jitter at
+   the exact moment the sheet settles open. Pausing the already-finished animation
+   preserves continuity without letting it compete with the physics transform. */
 @media (max-width: 820px) {
   .dialog-backdrop:not(:has(.settings-body)):not(:has(.kind-toggle)) > .dialog-card.rubies-sheet-dragging,
   .dialog-backdrop:not(:has(.settings-body)):not(:has(.kind-toggle)) > .dialog-card.rubies-sheet-rebounding {
+    animation: rubies-sheet-in var(--motion-sheet) var(--ease-sheet) both !important;
+    animation-play-state: paused !important;
     transition: none !important;
     will-change: transform, opacity;
   }
