@@ -31,7 +31,6 @@ const clearDragState = (card: HTMLElement | null) => {
 const setSheetPosition = (card: HTMLElement, backdrop: HTMLElement, position: number) => {
   sheetPositions.set(card, position)
   card.classList.add('rubies-sheet-dragging')
-  card.classList.remove('rubies-sheet-rebounding')
   card.style.setProperty('--rubies-sheet-drag', `${position}px`)
 
   const height = Math.max(1, card.getBoundingClientRect().height)
@@ -79,6 +78,7 @@ const runDismissPhysics = (card: HTMLElement, backdrop: HTMLElement, releaseVelo
      leaves the glass instead of snapping to a canned duration. */
   if (velocity < 120) velocity = 420
 
+  card.classList.remove('rubies-sheet-rebounding')
   setSheetPosition(card, backdrop, position)
 
   const step = (now: number) => {
@@ -121,14 +121,19 @@ const runReboundPhysics = (card: HTMLElement, backdrop: HTMLElement, releaseVelo
   cancelSheetPhysics(card)
 
   let position = sheetPositions.get(card) ?? 0
-  let velocity = releaseVelocity * 1000
-  const stiffness = 245
-  const damping = 27
+  let velocity = Math.max(-2600, Math.min(900, releaseVelocity * 1000))
+  const stiffness = 260
+  const damping = 32
   const startedAt = performance.now()
   let previousTime = startedAt
 
-  card.classList.add('rubies-sheet-dragging')
-  card.classList.add('rubies-sheet-rebounding')
+  card.classList.add('rubies-sheet-dragging', 'rubies-sheet-rebounding')
+
+  const settleOpen = () => {
+    setSheetPosition(card, backdrop, 0)
+    clearSheetPosition(card, backdrop)
+    sheetPhysicsFrames.delete(card)
+  }
 
   const step = (now: number) => {
     if (!document.contains(card)) {
@@ -142,15 +147,18 @@ const runReboundPhysics = (card: HTMLElement, backdrop: HTMLElement, releaseVelo
     const acceleration = -stiffness * position - damping * velocity
     velocity += acceleration * dt
     position += velocity * dt
-    if (position < -14) position = -14
+
+    /* The fully-open position is a hard physical stop. Allowing the spring to
+       overshoot above zero makes an upward reversal look like a visual jitter. */
+    if (position <= 0) {
+      settleOpen()
+      return
+    }
 
     setSheetPosition(card, backdrop, position)
-    card.classList.add('rubies-sheet-rebounding')
 
-    if ((Math.abs(position) < .35 && Math.abs(velocity) < 12) || now - startedAt > 900) {
-      setSheetPosition(card, backdrop, 0)
-      clearSheetPosition(card, backdrop)
-      sheetPhysicsFrames.delete(card)
+    if ((position < .35 && Math.abs(velocity) < 12) || now - startedAt > 900) {
+      settleOpen()
       return
     }
 
@@ -411,17 +419,39 @@ const isSwipeDismissibleSheet = (card: HTMLElement) => {
 
 const addVelocitySample = (state: SwipeState, y: number, time: number) => {
   state.samples.push({ y, time })
-  const cutoff = time - 90
-  while (state.samples.length > 2 && state.samples[0].time < cutoff) state.samples.shift()
-  if (state.samples.length > 8) state.samples.shift()
+  const cutoff = time - 110
+  while (state.samples.length > 3 && state.samples[0].time < cutoff) state.samples.shift()
+  while (state.samples.length > 9) state.samples.shift()
 }
 
-const releaseVelocityFor = (state: SwipeState) => {
+const releaseVelocityFor = (state: SwipeState, releaseTime: number) => {
   if (state.samples.length < 2) return 0
-  const first = state.samples[0]
-  const last = state.samples[state.samples.length - 1]
-  const elapsed = Math.max(1, last.time - first.time)
-  return (last.y - first.y) / elapsed
+
+  let velocity = 0
+  let seeded = false
+  for (let index = 1; index < state.samples.length; index += 1) {
+    const previous = state.samples[index - 1]
+    const current = state.samples[index]
+    const elapsed = current.time - previous.time
+    if (elapsed < 3) continue
+
+    const segmentVelocity = Math.max(-4.5, Math.min(4.5, (current.y - previous.y) / elapsed))
+    velocity = seeded ? velocity * .25 + segmentVelocity * .75 : segmentVelocity
+    seeded = true
+  }
+
+  if (!seeded) return 0
+  const lastSample = state.samples[state.samples.length - 1]
+  const age = Math.max(0, releaseTime - lastSample.time)
+  const freshness = Math.max(0, 1 - age / 90)
+  return velocity * freshness
+}
+
+const recentVerticalIntentFor = (state: SwipeState) => {
+  if (state.samples.length < 2) return 0
+  const lastIndex = state.samples.length - 1
+  const startIndex = Math.max(0, lastIndex - 2)
+  return state.samples[lastIndex].y - state.samples[startIndex].y
 }
 
 const handleSheetPointerDown = (event: PointerEvent) => {
@@ -464,6 +494,7 @@ const handleSheetPointerDown = (event: PointerEvent) => {
     distance: startOffset,
     samples: [{ y: event.clientY, time: now }],
   }
+  card.classList.remove('rubies-sheet-rebounding')
   setSheetPosition(card, backdrop, startOffset)
   header.setPointerCapture(event.pointerId)
 }
@@ -481,7 +512,12 @@ const handleSheetPointerMove = (event: PointerEvent) => {
   event.preventDefault()
   state.distance = distance
   addVelocitySample(state, event.clientY, performance.now())
+  cardDirectionOwnsGesture(state.card)
   setSheetPosition(state.card, state.backdrop, distance)
+}
+
+const cardDirectionOwnsGesture = (card: HTMLElement) => {
+  card.classList.remove('rubies-sheet-rebounding')
 }
 
 const finishSheetSwipe = (event: PointerEvent, cancelled = false) => {
@@ -490,14 +526,17 @@ const finishSheetSwipe = (event: PointerEvent, cancelled = false) => {
   swipeState = null
 
   if (state.header.hasPointerCapture(event.pointerId)) state.header.releasePointerCapture(event.pointerId)
-  addVelocitySample(state, event.clientY, performance.now())
 
-  const velocity = releaseVelocityFor(state)
+  const releaseTime = performance.now()
+  const velocity = releaseVelocityFor(state, releaseTime)
+  const recentIntent = recentVerticalIntentFor(state)
   const threshold = Math.min(170, Math.max(92, state.card.getBoundingClientRect().height * .14))
-  const projectedDistance = state.distance + Math.max(0, velocity) * 180
-  const shouldDismiss = !cancelled && (
-    state.distance >= threshold
-    || (state.distance >= 18 && velocity > .45 && projectedDistance >= threshold)
+  const projectedDistance = Math.max(0, state.distance + velocity * 220)
+  const upwardIntent = recentIntent < -2 || velocity < -.08
+  const downwardFlick = velocity > .38
+  const shouldDismiss = !cancelled && !upwardIntent && (
+    (downwardFlick && state.distance >= 18 && projectedDistance >= threshold * .82)
+    || (state.distance >= threshold && projectedDistance >= threshold)
   )
 
   if (shouldDismiss) {
@@ -509,7 +548,8 @@ const finishSheetSwipe = (event: PointerEvent, cancelled = false) => {
     }
   }
 
-  runReboundPhysics(state.card, state.backdrop, velocity)
+  const reboundVelocity = cancelled ? 0 : upwardIntent ? Math.min(0, velocity) : velocity
+  runReboundPhysics(state.card, state.backdrop, reboundVelocity)
 }
 
 const handleSheetPointerUp = (event: PointerEvent) => finishSheetSwipe(event)
