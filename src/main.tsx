@@ -18,6 +18,12 @@ import { installMobileViewport } from './mobileViewport'
 import { installMotionRuntime } from './motionRuntime'
 import { installMoveMoneyPolish } from './moveMoneyPolish'
 
+type IOSNavigator = Navigator & { standalone?: boolean }
+
+if ((navigator as IOSNavigator).standalone === true) {
+  document.documentElement.classList.add('rubies-ios-standalone')
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
