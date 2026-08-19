@@ -55,19 +55,29 @@ test('only actual mobile dialogs expose drag affordance and swipe-to-dismiss', a
   assert.match(runtime, /setPointerCapture/)
 })
 
-test('release velocity is sampled from the recent finger path instead of gesture-average speed', async () => {
+test('release velocity is recency weighted so reversals beat older gesture history', async () => {
   const runtime = await read('src/motionRuntime.ts')
   assert.match(runtime, /type VelocitySample/)
-  assert.match(runtime, /const cutoff = time - 90/)
-  assert.match(runtime, /while \(state\.samples\.length > 2 && state\.samples\[0\]\.time < cutoff\)/)
-  assert.match(runtime, /return \(last\.y - first\.y\) \/ elapsed/)
+  assert.match(runtime, /const cutoff = time - 110/)
+  assert.match(runtime, /velocity = seeded \? velocity \* \.25 \+ segmentVelocity \* \.75 : segmentVelocity/)
+  assert.match(runtime, /const freshness = Math\.max\(0, 1 - age \/ 90\)/)
+  assert.match(runtime, /return velocity \* freshness/)
   assert.doesNotMatch(runtime, /state\.distance \/ elapsed/)
 })
 
-test('fast flicks project release momentum into the dismissal decision', async () => {
+test('upward reversal explicitly vetoes dismissal even after crossing the distance threshold', async () => {
   const runtime = await read('src/motionRuntime.ts')
-  assert.match(runtime, /const projectedDistance = state\.distance \+ Math\.max\(0, velocity\) \* 180/)
-  assert.match(runtime, /state\.distance >= 18 && velocity > \.45 && projectedDistance >= threshold/)
+  assert.match(runtime, /const recentIntent = recentVerticalIntentFor\(state\)/)
+  assert.match(runtime, /const projectedDistance = Math\.max\(0, state\.distance \+ velocity \* 220\)/)
+  assert.match(runtime, /const upwardIntent = recentIntent < -2 \|\| velocity < -\.08/)
+  assert.match(runtime, /const shouldDismiss = !cancelled && !upwardIntent/)
+  assert.doesNotMatch(runtime, /state\.distance >= threshold\s*\|\|/)
+})
+
+test('fast downward flicks still project momentum into dismissal', async () => {
+  const runtime = await read('src/motionRuntime.ts')
+  assert.match(runtime, /const downwardFlick = velocity > \.38/)
+  assert.match(runtime, /downwardFlick && state\.distance >= 18 && projectedDistance >= threshold \* \.82/)
   assert.match(runtime, /dismissVelocities\.set\(state\.backdrop, Math\.max\(0, velocity\)\)/)
 })
 
@@ -85,20 +95,27 @@ test('committed mobile dismissal is requestAnimationFrame physics with inherited
   assert.doesNotMatch(block, /card\.animate\(/)
 })
 
-test('cancelled sheet dismissal springs back using release velocity rather than CSS timing', async () => {
+test('keep-open rebound is critically damped enough to avoid a down-up jitter', async () => {
   const runtime = await read('src/motionRuntime.ts')
   const physicsCss = await read('src/physics-motion.css')
   const start = runtime.indexOf('const runReboundPhysics')
   const end = runtime.indexOf('const playDismissAnimation', start)
   const block = runtime.slice(start, end)
   assert.ok(start >= 0 && end > start)
-  assert.match(block, /let velocity = releaseVelocity \* 1000/)
-  assert.match(block, /const stiffness = 245/)
-  assert.match(block, /const damping = 27/)
+  assert.match(block, /let velocity = Math\.max\(-2600, Math\.min\(900, releaseVelocity \* 1000\)\)/)
+  assert.match(block, /const stiffness = 260/)
+  assert.match(block, /const damping = 32/)
   assert.match(block, /const acceleration = -stiffness \* position - damping \* velocity/)
+  assert.match(block, /if \(position <= 0\)[\s\S]*?settleOpen\(\)/)
   assert.match(block, /requestAnimationFrame\(step\)/)
   assert.doesNotMatch(block, /setTimeout/)
   assert.match(physicsCss, /rubies-sheet-rebounding[\s\S]*?transition:\s*none\s*!important/)
+})
+
+test('upward keep intent cannot inherit contradictory downward rebound velocity', async () => {
+  const runtime = await read('src/motionRuntime.ts')
+  assert.match(runtime, /const reboundVelocity = cancelled \? 0 : upwardIntent \? Math\.min\(0, velocity\) : velocity/)
+  assert.match(runtime, /runReboundPhysics\(state\.card, state\.backdrop, reboundVelocity\)/)
 })
 
 test('mobile physics preserves visual continuity from the drag frame into release', async () => {
