@@ -16,3 +16,8 @@ test('iOS Home Screen mode is detected explicitly and moves visible headers belo
   assert.match(css, /padding-top:\s*calc\(22px \+ var\(--rubies-standalone-header-comfort\)\)/)
   assert.doesNotMatch(css, /@media \(display-mode:\s*standalone\)/)
 })
+
+test('installed iOS month title gets the measured Dynamic Island optical correction', () => {
+  assert.match(css, /html\.rubies-ios-standalone \.plan-header \.month-navigation > h1/)
+  assert.match(css, /transform:\s*translateX\(-2px\)\s*!important/)
+})

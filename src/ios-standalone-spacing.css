@@ -14,6 +14,14 @@
     padding-top: calc(14px + var(--rubies-standalone-header-comfort)) !important;
   }
 
+  /* The iPhone 15 Pro Max screenshot shows the physical Dynamic Island pill
+     sitting about 1.8 CSS px left of the viewport's mathematical center. Keep
+     the header structure symmetric, but apply a tiny installed-iOS-only optical
+     correction so the month reads centered against the system hardware. */
+  html.rubies-ios-standalone .plan-header .month-navigation > h1 {
+    transform: translateX(-2px) !important;
+  }
+
   /* New/Settings are fixed mobile screens and consume safe-area-inset-top at the
      backdrop level. Add the comfort space directly to their visible header so
      the title itself is measurably below the status-bar blur. */
