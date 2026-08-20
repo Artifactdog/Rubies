@@ -5,28 +5,25 @@
   --motion-fast: 150ms;
   --motion-ui: 240ms;
   --motion-popover: 300ms;
-  --motion-dialog: 440ms;
+  --motion-dialog: 360ms;
   --motion-sheet: 540ms;
   --motion-sheet-exit: 410ms;
   --ease-standard: cubic-bezier(.2, .8, .2, 1);
   --ease-spring: cubic-bezier(.16, 1, .3, 1);
+  --ease-dialog: cubic-bezier(.22, 1, .36, 1);
   --ease-sheet: cubic-bezier(.32, .72, 0, 1);
   --ease-exit: cubic-bezier(.32, 0, .67, 0);
 }
 
 @keyframes rubies-backdrop-in {
-  from { opacity: 0; backdrop-filter: blur(0); }
+  from { opacity: 0; }
   to { opacity: 1; }
 }
 
 @keyframes rubies-dialog-in {
   0% {
     opacity: 0;
-    transform: translate3d(0, 28px, 0) scale(.93);
-  }
-  72% {
-    opacity: 1;
-    transform: translate3d(0, -2px, 0) scale(1.008);
+    transform: translate3d(0, 18px, 0) scale(.985);
   }
   100% {
     opacity: 1;
@@ -191,16 +188,20 @@ textarea:focus {
   transition: opacity var(--motion-ui) var(--ease-standard), transform 420ms var(--ease-spring);
 }
 
-/* Desktop dialogs use a visible scale/translate spring. Exit is driven by the
-   Web Animations API so the state change occurs exactly when motion finishes. */
+/* Desktop dialogs use a monotonic compositor-friendly entrance. Avoiding the
+   old overshoot means text and borders never travel past their final position
+   and then correct themselves on the last frames. The backdrop only animates
+   opacity; blur remains static so opening a dialog does not trigger expensive
+   frame-by-frame backdrop-filter rasterization. */
 .dialog-backdrop {
-  animation: rubies-backdrop-in 320ms var(--ease-standard) both;
-  will-change: opacity, backdrop-filter;
+  animation: rubies-backdrop-in 220ms var(--ease-standard) both;
+  will-change: opacity;
 }
 
 .dialog-card {
-  animation: rubies-dialog-in var(--motion-dialog) var(--ease-spring) both;
-  transform-origin: center center;
+  animation: rubies-dialog-in var(--motion-dialog) var(--ease-dialog) both;
+  transform-origin: center 42%;
+  backface-visibility: hidden;
   will-change: transform, opacity;
 }
 
