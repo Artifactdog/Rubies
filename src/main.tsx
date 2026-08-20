@@ -17,6 +17,7 @@ import { installUiRuntime } from './uiRuntime'
 import { installMobileViewport } from './mobileViewport'
 import { installMotionRuntime } from './motionRuntime'
 import { installMoveMoneyPolish } from './moveMoneyPolish'
+import { installDialogKeyboard } from './dialogKeyboard'
 
 type IOSNavigator = Navigator & { standalone?: boolean }
 
@@ -31,6 +32,7 @@ createRoot(document.getElementById('root')!).render(
 )
 
 installMotionRuntime()
+installDialogKeyboard()
 installUiRuntime()
 installMoveMoneyPolish()
 installMobileViewport()
