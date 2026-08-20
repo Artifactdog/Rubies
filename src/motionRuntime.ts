@@ -198,15 +198,17 @@ const playDismissAnimation = async (backdrop: HTMLElement) => {
   sheetPositions.delete(card)
   card.style.removeProperty('--rubies-sheet-drag')
 
+  /* Desktop dismissal mirrors the restrained opening language: a single
+     monotonic transform and opacity path. No intermediate dip or deep shrink,
+     so the card never changes direction or looks like it catches on a frame. */
   const cardAnimation = card.animate(
     [
-      { transform: currentTransform, opacity: currentOpacity, offset: 0 },
-      { transform: 'translate3d(0, 3px, 0) scale(.995)', opacity: .98, offset: .18 },
-      { transform: 'translate3d(0, 30px, 0) scale(.925)', opacity: 0, offset: 1 },
+      { transform: currentTransform, opacity: currentOpacity },
+      { transform: 'translate3d(0, 14px, 0) scale(.982)', opacity: 0 },
     ],
     {
-      duration: 320,
-      easing: 'cubic-bezier(.4, 0, .2, 1)',
+      duration: 220,
+      easing: 'cubic-bezier(.4, 0, .6, 1)',
       fill: 'forwards',
     },
   )
@@ -217,7 +219,7 @@ const playDismissAnimation = async (backdrop: HTMLElement) => {
       { opacity: 0 },
     ],
     {
-      duration: 280,
+      duration: 180,
       easing: 'cubic-bezier(.4, 0, 1, 1)',
       fill: 'forwards',
     },
