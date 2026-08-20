@@ -18,11 +18,14 @@ test('motion layer loads after layout styles and physics overrides load after mo
   assert.ok(uiInstall > motionInstall)
 })
 
-test('desktop dialogs use monotonic compositor-friendly entrance and animation-driven exit', async () => {
+test('desktop dialogs use monotonic compositor-friendly entrance and restrained exit', async () => {
   const css = await read('src/motion.css')
   const runtime = await read('src/motionRuntime.ts')
   const entrance = css.match(/@keyframes rubies-dialog-in\s*\{([\s\S]*?)\n\}/)?.[1] ?? ''
   const backdrop = css.match(/@keyframes rubies-backdrop-in\s*\{([\s\S]*?)\n\}/)?.[1] ?? ''
+  const dismissStart = runtime.indexOf('const cardAnimation = card.animate')
+  const dismissEnd = runtime.indexOf('const backdropAnimation = backdrop.animate', dismissStart)
+  const dismissBlock = runtime.slice(dismissStart, dismissEnd)
 
   assert.match(css, /--motion-dialog:\s*360ms/)
   assert.match(css, /--ease-dialog:\s*cubic-bezier\(\.22, 1, \.36, 1\)/)
@@ -32,9 +35,11 @@ test('desktop dialogs use monotonic compositor-friendly entrance and animation-d
   assert.doesNotMatch(entrance, /scale\(1\.0/)
   assert.doesNotMatch(backdrop, /backdrop-filter/)
   assert.match(css, /\.dialog-backdrop\s*\{[\s\S]*?will-change:\s*opacity/)
-  assert.match(runtime, /card\.animate\(/)
   assert.match(runtime, /animation\.finished/)
-  assert.match(runtime, /duration:\s*320/)
+  assert.match(dismissBlock, /translate3d\(0, 14px, 0\) scale\(\.982\)/)
+  assert.match(dismissBlock, /duration:\s*220/)
+  assert.doesNotMatch(dismissBlock, /offset:\s*\.18/)
+  assert.doesNotMatch(dismissBlock, /scale\(\.925\)/)
   assert.doesNotMatch(runtime, /const motionDelay/)
 })
 
