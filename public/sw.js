@@ -1,7 +1,10 @@
 const CACHE_NAME = 'rubies-shell-2026.8.20.0'
+// Keep this release marker in the service-worker source so installed PWAs notice the final build.
+const RELEASE_MARKER = 'desktop-motion-and-escape'
 const APP_SHELL = ['/', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png']
 
 self.addEventListener('install', (event) => {
+  void RELEASE_MARKER
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)))
   self.skipWaiting()
 })
